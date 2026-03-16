@@ -1,0 +1,128 @@
+{
+  "createdAt" : "2026-03-16T02:01:30Z",
+  "defaultTimeoutMs" : 5000,
+  "description" : "A starter flow for the first implementation spike: attach, wait on a visual anchor, click a point, press a key, and store a checkpoint.",
+  "id" : "33333333-3333-3333-3333-333333333333",
+  "name" : "Practice Window Loop",
+  "steps" : [
+    {
+      "enabled" : true,
+      "id" : "14579FA9-E961-4DDC-9978-B99A58CA488A",
+      "ordinal" : 0,
+      "params" : {
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "attachWindow"
+    },
+    {
+      "enabled" : true,
+      "id" : "1864FF6B-0CC7-4349-9420-391ED70D175F",
+      "ordinal" : 1,
+      "params" : {
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "focusWindow"
+    },
+    {
+      "enabled" : true,
+      "id" : "8FADA320-D52D-43C5-AB3B-F59480D73CC5",
+      "ordinal" : 2,
+      "params" : {
+        "anchorID" : "22222222-2222-2222-2222-222222222222",
+        "modifiers" : [
+
+        ],
+        "pollIntervalMs" : 120
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "timeoutMs" : 5000,
+      "type" : "waitForAnchor"
+    },
+    {
+      "enabled" : true,
+      "id" : "32475D9E-07B3-47D5-B486-32E5F1272634",
+      "ordinal" : 3,
+      "params" : {
+        "button" : "left",
+        "modifiers" : [
+
+        ],
+        "point" : {
+          "x" : 0.64,
+          "y" : 0.38
+        }
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "clickAt"
+    },
+    {
+      "enabled" : true,
+      "id" : "8C4D4C08-F003-463A-90AF-81633FBEA912",
+      "ordinal" : 4,
+      "params" : {
+        "keyCode" : "SPACE",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "E3E3816A-5678-4308-A227-501EADACA049",
+      "ordinal" : 5,
+      "params" : {
+        "label" : "after_action",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "checkpointScreenshot"
+    }
+  ],
+  "targetHint" : {
+    "appName" : "Practice Java Window",
+    "bundleID" : "com.example.GameLauncher",
+    "windowTitleContains" : "Practice Arena"
+  },
+  "updatedAt" : "2026-03-16T02:01:30Z",
+  "version" : 1
+}

@@ -1,0 +1,525 @@
+{
+  "createdAt" : "2026-03-16T04:37:09Z",
+  "defaultTimeoutMs" : 5000,
+  "description" : "Recorded from Google Chrome \/ New Tab",
+  "id" : "152FABF9-D372-46FF-84FD-FF27A3FC13D4",
+  "name" : "Recorded Flow",
+  "steps" : [
+    {
+      "enabled" : true,
+      "id" : "5B2217F8-46CD-4468-97F3-6F3D0D4DAB3F",
+      "ordinal" : 0,
+      "params" : {
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "attachWindow"
+    },
+    {
+      "enabled" : true,
+      "id" : "8E991BDD-40E4-490B-BB46-D23A3791233D",
+      "ordinal" : 1,
+      "params" : {
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "focusWindow"
+    },
+    {
+      "enabled" : true,
+      "id" : "DF656C91-203D-434A-9ACC-832D50DFF90A",
+      "ordinal" : 2,
+      "params" : {
+        "button" : "left",
+        "modifiers" : [
+
+        ],
+        "point" : {
+          "x" : 0.5163045247395833,
+          "y" : 0.7453419360997964
+        }
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "clickAt"
+    },
+    {
+      "enabled" : true,
+      "id" : "1DA07FFF-A133-45D2-BC54-C2E828AD5766",
+      "ordinal" : 3,
+      "params" : {
+        "button" : "left",
+        "modifiers" : [
+
+        ],
+        "point" : {
+          "x" : 0.35456746419270835,
+          "y" : 0.42142948065173114
+        }
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "clickAt"
+    },
+    {
+      "enabled" : true,
+      "id" : "3171899E-AF44-48C0-95F7-FBEE3C0C1810",
+      "ordinal" : 4,
+      "params" : {
+        "keyCode" : "F",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "AFECEC48-08FB-41D8-AC8E-65638880C371",
+      "ordinal" : 5,
+      "params" : {
+        "keyCode" : "I",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "7B96B7EB-4028-4A67-A11D-7595F46951A8",
+      "ordinal" : 6,
+      "params" : {
+        "keyCode" : "R",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "031FED3A-F493-41AE-BCC6-49F54DCC8CC9",
+      "ordinal" : 7,
+      "params" : {
+        "keyCode" : "E",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "D364BF45-FBA1-4531-9811-CA20D80A49BC",
+      "ordinal" : 8,
+      "params" : {
+        "keyCode" : "F",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "9B147F79-574E-4B84-88BC-CA8967584002",
+      "ordinal" : 9,
+      "params" : {
+        "keyCode" : "L",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "D1C261F3-6EDA-45AB-86F6-DD6B0D7A1D41",
+      "ordinal" : 10,
+      "params" : {
+        "keyCode" : "Y",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "92BA50CF-398A-4DB4-A94E-0E90ADCCCFD1",
+      "ordinal" : 11,
+      "params" : {
+        "keyCode" : ".",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "E26280F0-F3D5-4C02-A7D3-F72BD460167A",
+      "ordinal" : 12,
+      "params" : {
+        "keyCode" : "DELETE",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "E79B6B1F-19DF-4EF1-ADD8-55AB5234C736",
+      "ordinal" : 13,
+      "params" : {
+        "keyCode" : "DELETE",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "E08D3BD2-D9B1-4B4D-B1C2-E8C5EFFA1E68",
+      "ordinal" : 14,
+      "params" : {
+        "keyCode" : "ESCAPE",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "D8E22FA0-8C95-487C-BBA2-BCD7CFA36A60",
+      "ordinal" : 15,
+      "params" : {
+        "button" : "left",
+        "modifiers" : [
+
+        ],
+        "point" : {
+          "x" : 0.23967081705729168,
+          "y" : 0.06518902749490835
+        }
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "clickAt"
+    },
+    {
+      "enabled" : true,
+      "id" : "5EF25C3F-6ADC-4D96-ACB8-1F241C0930F9",
+      "ordinal" : 16,
+      "params" : {
+        "keyCode" : "F",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "C221CC53-F91D-4BB5-B7EE-FFE166A344F0",
+      "ordinal" : 17,
+      "params" : {
+        "keyCode" : "I",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "D0D0FC80-1AAF-4E84-9964-2E69A54A82CA",
+      "ordinal" : 18,
+      "params" : {
+        "keyCode" : "R",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "E85B93CE-F0F3-43AD-83AE-CE0C166A7F40",
+      "ordinal" : 19,
+      "params" : {
+        "keyCode" : "E",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "BB86E969-3FC4-4F18-9148-77B9068AEB7E",
+      "ordinal" : 20,
+      "params" : {
+        "keyCode" : "F",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "0A0CDF33-3EE4-44E9-8D96-7B043DF76E5B",
+      "ordinal" : 21,
+      "params" : {
+        "keyCode" : "L",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "0701D21E-E267-4C28-85F0-031285EFCAE0",
+      "ordinal" : 22,
+      "params" : {
+        "keyCode" : "Y",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "DC4BF396-50F4-49E6-BA56-9D86F03AE7DC",
+      "ordinal" : 23,
+      "params" : {
+        "keyCode" : "RETURN",
+        "modifiers" : [
+
+        ]
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "pressKey"
+    },
+    {
+      "enabled" : true,
+      "id" : "E11DC0A4-A793-4465-A034-0CDD928C109E",
+      "ordinal" : 24,
+      "params" : {
+        "button" : "left",
+        "modifiers" : [
+
+        ],
+        "point" : {
+          "x" : 0.07072347005208333,
+          "y" : 0.6234327265784114
+        }
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "clickAt"
+    },
+    {
+      "enabled" : true,
+      "id" : "1C125755-B75C-4CB6-8D28-7E1CEB16DD09",
+      "ordinal" : 25,
+      "params" : {
+        "button" : "left",
+        "modifiers" : [
+
+        ],
+        "point" : {
+          "x" : 0.18329874674479166,
+          "y" : 0.5563581975560081
+        }
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "clickAt"
+    },
+    {
+      "enabled" : true,
+      "id" : "147B5F20-2D4A-4447-A448-E0E0C2263B02",
+      "ordinal" : 26,
+      "params" : {
+        "button" : "left",
+        "modifiers" : [
+
+        ],
+        "point" : {
+          "x" : 0.08939005533854166,
+          "y" : 0.20093320392057026
+        }
+      },
+      "postconditions" : [
+
+      ],
+      "preconditions" : [
+
+      ],
+      "type" : "clickAt"
+    }
+  ],
+  "targetHint" : {
+    "appName" : "Google Chrome",
+    "bundleID" : "com.google.Chrome",
+    "ownerPID" : 58607,
+    "windowTitleContains" : "New Tab"
+  },
+  "updatedAt" : "2026-03-16T04:37:09Z",
+  "version" : 1
+}
