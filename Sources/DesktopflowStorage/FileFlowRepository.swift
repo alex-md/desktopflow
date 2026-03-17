@@ -39,6 +39,13 @@ public actor FileFlowRepository: FlowRepository {
         try data.write(to: flowURL(for: flow.id), options: [.atomic])
     }
 
+    public func deleteFlow(id: UUID) async throws {
+        try ensureDirectory()
+        let url = flowURL(for: id)
+        guard FileManager.default.fileExists(atPath: url.path()) else { return }
+        try FileManager.default.removeItem(at: url)
+    }
+
     private func ensureDirectory() throws {
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
     }
@@ -93,15 +100,15 @@ public actor FileAnchorRepository: AnchorRepository {
 }
 
 public enum WorkspacePaths {
-    public static func root(from workingDirectory: String = FileManager.default.currentDirectoryPath) -> URL {
-        URL(fileURLWithPath: workingDirectory, isDirectory: true).appending(path: "WorkspaceData")
+    public static func root() -> URL {
+        URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true).appending(path: "WorkspaceData")
     }
 
-    public static func flowsDirectory(from workingDirectory: String = FileManager.default.currentDirectoryPath) -> URL {
-        root(from: workingDirectory).appending(path: "flows")
+    public static func flowsDirectory() -> URL {
+        root().appending(path: "flows")
     }
 
-    public static func anchorsDirectory(from workingDirectory: String = FileManager.default.currentDirectoryPath) -> URL {
-        root(from: workingDirectory).appending(path: "anchors")
+    public static func anchorsDirectory() -> URL {
+        root().appending(path: "anchors")
     }
 }

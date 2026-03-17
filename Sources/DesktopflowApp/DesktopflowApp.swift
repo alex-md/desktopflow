@@ -16,6 +16,6 @@ struct DesktopflowApp: App {
                     await model.load()
                 }
         }
-        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1440, height: 920)
     }
 }

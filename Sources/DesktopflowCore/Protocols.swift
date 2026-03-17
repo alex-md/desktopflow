@@ -36,6 +36,7 @@ public protocol FlowRepository: Sendable {
     func listFlows() async throws -> [Flow]
     func loadFlow(id: UUID) async throws -> Flow?
     func saveFlow(_ flow: Flow) async throws
+    func deleteFlow(id: UUID) async throws
 }
 
 public protocol AnchorRepository: Sendable {

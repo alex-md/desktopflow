@@ -19,15 +19,19 @@ final class AppModel: ObservableObject {
     @Published var isRunningFlow = false
     @Published var runnerStatus = "Idle"
     @Published var lastRunReport: FlowRunReport?
+    @Published var editorDraft: Flow?
+    @Published var selectedEditorStepID: UUID?
+    @Published var editorStatus = "Select a flow to edit."
 
-    private let flowRepository: any FlowRepository
-    private let anchorRepository: any AnchorRepository
+    let flowRepository: any FlowRepository
+    let anchorRepository: any AnchorRepository
     private let windowCatalog = SystemWindowCatalog()
     private var localMonitor: Any?
     private var globalMonitor: Any?
     private var recordingTargetHint: TargetHint?
     private var recordingWindow: BoundWindow?
     private var runControl: RunControl?
+    var editorSavedSnapshot: Flow?
 
     init(flowRepository: any FlowRepository, anchorRepository: any AnchorRepository) {
         self.flowRepository = flowRepository
@@ -42,6 +46,15 @@ final class AppModel: ObservableObject {
         availableWindows.first(where: { $0.id == selectedWindowID }) ?? availableWindows.first
     }
 
+    var selectedEditorStep: FlowStep? {
+        guard let draft = editorDraft else { return nil }
+        return draft.steps.first(where: { $0.id == selectedEditorStepID }) ?? draft.steps.first
+    }
+
+    var editorIsDirty: Bool {
+        editorDraft != editorSavedSnapshot
+    }
+
     func load() async {
         do {
             try await seedIfNeeded()
@@ -49,10 +62,16 @@ final class AppModel: ObservableObject {
             anchors = try await anchorRepository.listAnchors()
             selectedFlowID = selectedFlowID ?? flows.first?.id
             try await refreshWindows()
+            hydrateEditorFromSelection(force: editorDraft == nil || !editorIsDirty)
             lastError = nil
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    func selectFlow(_ id: UUID?) {
+        selectedFlowID = id
+        hydrateEditorFromSelection(force: true)
     }
 
     func refreshWindows() async throws {
@@ -313,5 +332,22 @@ final class AppModel: ObservableObject {
         if flags.contains(.shift) { modifiers.append("shift") }
         if flags.contains(.capsLock) { modifiers.append("capsLock") }
         return modifiers
+    }
+
+    private func hydrateEditorFromSelection(force: Bool) {
+        guard force || !editorIsDirty else { return }
+
+        guard let flow = selectedFlow else {
+            editorDraft = nil
+            editorSavedSnapshot = nil
+            selectedEditorStepID = nil
+            editorStatus = "Create or select a flow to edit."
+            return
+        }
+
+        editorDraft = flow
+        editorSavedSnapshot = flow
+        selectedEditorStepID = flow.steps.first?.id
+        editorStatus = "Editing '\(flow.name)'."
     }
 }

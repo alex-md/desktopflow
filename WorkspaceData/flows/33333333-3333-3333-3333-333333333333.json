@@ -1,5 +1,5 @@
 {
-  "createdAt" : "2026-03-16T02:01:30Z",
+  "createdAt" : "2026-03-16T17:52:35Z",
   "defaultTimeoutMs" : 5000,
   "description" : "A starter flow for the first implementation spike: attach, wait on a visual anchor, click a point, press a key, and store a checkpoint.",
   "id" : "33333333-3333-3333-3333-333333333333",
@@ -7,7 +7,7 @@
   "steps" : [
     {
       "enabled" : true,
-      "id" : "14579FA9-E961-4DDC-9978-B99A58CA488A",
+      "id" : "DE49E98A-8248-4BF4-ABA8-D3099F2F4C2C",
       "ordinal" : 0,
       "params" : {
         "modifiers" : [
@@ -24,7 +24,7 @@
     },
     {
       "enabled" : true,
-      "id" : "1864FF6B-0CC7-4349-9420-391ED70D175F",
+      "id" : "4D95CD14-607E-41C8-AADA-5F6C65C917F8",
       "ordinal" : 1,
       "params" : {
         "modifiers" : [
@@ -41,7 +41,7 @@
     },
     {
       "enabled" : true,
-      "id" : "8FADA320-D52D-43C5-AB3B-F59480D73CC5",
+      "id" : "2A0719C5-75CB-4BDF-A78C-28FC06284DCD",
       "ordinal" : 2,
       "params" : {
         "anchorID" : "22222222-2222-2222-2222-222222222222",
@@ -61,7 +61,7 @@
     },
     {
       "enabled" : true,
-      "id" : "32475D9E-07B3-47D5-B486-32E5F1272634",
+      "id" : "4CD7E6F9-D764-4FAF-8B7A-11AE312FF091",
       "ordinal" : 3,
       "params" : {
         "button" : "left",
@@ -83,7 +83,7 @@
     },
     {
       "enabled" : true,
-      "id" : "8C4D4C08-F003-463A-90AF-81633FBEA912",
+      "id" : "08439BEC-FF2D-46DC-B310-E77DFA6B38A0",
       "ordinal" : 4,
       "params" : {
         "keyCode" : "SPACE",
@@ -101,7 +101,7 @@
     },
     {
       "enabled" : true,
-      "id" : "E3E3816A-5678-4308-A227-501EADACA049",
+      "id" : "21D6BDF9-72E9-44A7-A118-C66638F0DE61",
       "ordinal" : 5,
       "params" : {
         "label" : "after_action",
@@ -123,6 +123,6 @@
     "bundleID" : "com.example.GameLauncher",
     "windowTitleContains" : "Practice Arena"
   },
-  "updatedAt" : "2026-03-16T02:01:30Z",
+  "updatedAt" : "2026-03-16T17:52:35Z",
   "version" : 1
 }
