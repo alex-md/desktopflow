@@ -28,6 +28,12 @@ xcuserdata/
 .vscode/
 .idea/
 
+# Node / Electron
+node_modules/
+out/
+dist/
+dist-electron/
+
 # General
 *.swp
 *~

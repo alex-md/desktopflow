@@ -7,6 +7,7 @@ struct DesktopflowChecks {
         do {
             try coordinateMappingCheck()
             try flowSerializationCheck()
+            try recorderPipelineCheck()
             try await runnerCheck()
             print("DesktopflowChecks: all checks passed.")
         } catch {
@@ -36,6 +37,44 @@ struct DesktopflowChecks {
 
         try expect(decoded.steps.count == 6, "Sample flow should round-trip with all semantic steps intact.")
         try expect(decoded.steps[2].type == .waitForAnchor, "Anchor wait step should survive serialization.")
+    }
+
+    private static func recorderPipelineCheck() throws {
+        let window = BoundWindow(
+            descriptor: WindowDescriptor(bundleID: "com.example.Target", appName: "Target", title: "Arena"),
+            geometry: WindowGeometry(
+                frameRect: ScreenRect(x: 100, y: 100, width: 1024, height: 768),
+                contentRect: ScreenRect(x: 120, y: 140, width: 900, height: 620)
+            )
+        )
+
+        var pipeline = RecorderSemanticPipeline(
+            targetHint: TargetHint(bundleID: "com.example.Target"),
+            configuration: RecorderPipelineConfiguration(idleWaitThresholdMs: 900, minimumWaitMs: 250)
+        )
+
+        let start = Date(timeIntervalSinceReferenceDate: 10_000)
+        let first = pipeline.consume(
+            RecordedLowLevelEvent(
+                timestamp: start,
+                kind: .mouseDown(button: .left, location: ScreenPoint(x: 570, y: 450))
+            ),
+            in: window
+        )
+        let second = pipeline.consume(
+            RecordedLowLevelEvent(
+                timestamp: start.addingTimeInterval(1.4),
+                kind: .keyDown(keyCode: "SPACE", modifiers: [], bundleID: "com.example.Target")
+            ),
+            in: window
+        )
+
+        try expect(first.count == 1, "First accepted low-level event should produce one semantic step.")
+        try expect(first.first?.type == .clickAt, "Mouse down should become a click semantic step.")
+        try expect(second.count == 2, "Recorder pipeline should inject a wait step before a delayed action.")
+        try expect(second.first?.type == .wait, "Recorder pipeline should emit a wait step after an idle gap.")
+        try expect(second.last?.type == .pressKey, "Key down should become a pressKey semantic step.")
+        try expect(second.first?.params.durationMs == 1_400, "Wait duration should preserve the observed idle gap.")
     }
 
     private static func runnerCheck() async throws {

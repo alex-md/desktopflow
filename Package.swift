@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "DesktopflowPlatform", targets: ["DesktopflowPlatform"]),
         .library(name: "DesktopflowStorage", targets: ["DesktopflowStorage"]),
         .executable(name: "DesktopflowApp", targets: ["DesktopflowApp"]),
+        .executable(name: "DesktopflowBridge", targets: ["DesktopflowBridge"]),
         .executable(name: "DesktopflowChecks", targets: ["DesktopflowChecks"])
     ],
     targets: [
@@ -27,6 +28,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "DesktopflowApp",
+            dependencies: ["DesktopflowCore", "DesktopflowPlatform", "DesktopflowStorage"]
+        ),
+        .executableTarget(
+            name: "DesktopflowBridge",
             dependencies: ["DesktopflowCore", "DesktopflowPlatform", "DesktopflowStorage"]
         ),
         .executableTarget(
