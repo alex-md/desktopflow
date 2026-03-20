@@ -1,10 +1,11 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Anchor, Flow, WorkspacePayload } from "../shared/models";
 import { sampleAnchor, sampleFlow } from "./sampleData";
 import { buildWindowCatalog } from "./windowCatalog";
 
 const jsonExtension = ".json";
+let configuredWorkspaceRoot: string | null = null;
 
 const sortObjectKeys = (value: unknown): unknown => {
   if (Array.isArray(value)) {
@@ -25,8 +26,20 @@ const sortObjectKeys = (value: unknown): unknown => {
 
 const prettyJson = (value: unknown) => `${JSON.stringify(sortObjectKeys(value), null, 2)}\n`;
 
-export const getWorkspaceRoot = (): string =>
-  path.resolve(process.env.DESKTOPFLOW_WORKSPACE_ROOT ?? process.cwd(), "WorkspaceData");
+const normalizeWorkspaceRoot = (root: string): string =>
+  path.basename(root) === "WorkspaceData" ? root : path.join(root, "WorkspaceData");
+
+export const configureWorkspaceRoot = (root: string) => {
+  configuredWorkspaceRoot = path.resolve(normalizeWorkspaceRoot(root));
+};
+
+export const getWorkspaceRoot = (): string => {
+  if (configuredWorkspaceRoot) {
+    return configuredWorkspaceRoot;
+  }
+
+  return path.resolve(normalizeWorkspaceRoot(process.env.DESKTOPFLOW_WORKSPACE_ROOT ?? process.cwd()));
+};
 
 const flowsDirectory = () => path.join(getWorkspaceRoot(), "flows");
 const anchorsDirectory = () => path.join(getWorkspaceRoot(), "anchors");
@@ -67,6 +80,38 @@ export const ensureSeedData = async () => {
   if (anchorEntries.filter((name) => name.endsWith(jsonExtension)).length === 0) {
     await saveAnchor(sampleAnchor);
   }
+};
+
+export const seedWorkspaceFrom = async (sourceRoot: string) => {
+  const resolvedSourceRoot = path.resolve(sourceRoot);
+  const targetRoot = getWorkspaceRoot();
+
+  if (resolvedSourceRoot === targetRoot) {
+    return;
+  }
+
+  const targetFlowsDirectory = flowsDirectory();
+  const targetAnchorsDirectory = anchorsDirectory();
+  await mkdir(targetFlowsDirectory, { recursive: true });
+  await mkdir(targetAnchorsDirectory, { recursive: true });
+
+  const [existingFlowEntries, existingAnchorEntries] = await Promise.all([
+    readdir(targetFlowsDirectory),
+    readdir(targetAnchorsDirectory)
+  ]);
+  const hasExistingWorkspace =
+    existingFlowEntries.some((name) => name.endsWith(jsonExtension)) ||
+    existingAnchorEntries.some((name) => name.endsWith(jsonExtension));
+
+  if (hasExistingWorkspace) {
+    return;
+  }
+
+  await cp(resolvedSourceRoot, targetRoot, {
+    recursive: true,
+    force: false,
+    errorOnExist: false
+  });
 };
 
 export const listFlows = async (): Promise<Flow[]> => {

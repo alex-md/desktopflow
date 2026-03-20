@@ -1,128 +1,92 @@
 {
-  "createdAt" : "2026-03-16T17:52:35Z",
-  "defaultTimeoutMs" : 5000,
-  "description" : "A starter flow for the first implementation spike: attach, wait on a visual anchor, click a point, press a key, and store a checkpoint.",
-  "id" : "33333333-3333-3333-3333-333333333333",
-  "name" : "Practice Window Loop",
-  "steps" : [
+  "createdAt": "2026-03-20T11:55:04.008Z",
+  "defaultTimeoutMs": 5000,
+  "description": "A starter flow for the first implementation spike: attach, wait on a visual anchor, click a point, press a key, and store a checkpoint.",
+  "id": "33333333-3333-3333-3333-333333333333",
+  "name": "Practice Window Loop",
+  "steps": [
     {
-      "enabled" : true,
-      "id" : "DE49E98A-8248-4BF4-ABA8-D3099F2F4C2C",
-      "ordinal" : 0,
-      "params" : {
-        "modifiers" : [
-
-        ]
+      "enabled": true,
+      "id": "70ba349a-e724-4c7d-9df6-975eebc312dc",
+      "ordinal": 0,
+      "params": {
+        "modifiers": []
       },
-      "postconditions" : [
-
-      ],
-      "preconditions" : [
-
-      ],
-      "type" : "attachWindow"
+      "postconditions": [],
+      "preconditions": [],
+      "type": "attachWindow"
     },
     {
-      "enabled" : true,
-      "id" : "4D95CD14-607E-41C8-AADA-5F6C65C917F8",
-      "ordinal" : 1,
-      "params" : {
-        "modifiers" : [
-
-        ]
+      "enabled": true,
+      "id": "02b26c80-54dc-4425-9b6b-45000ada9ccd",
+      "ordinal": 1,
+      "params": {
+        "modifiers": []
       },
-      "postconditions" : [
-
-      ],
-      "preconditions" : [
-
-      ],
-      "type" : "focusWindow"
+      "postconditions": [],
+      "preconditions": [],
+      "type": "focusWindow"
     },
     {
-      "enabled" : true,
-      "id" : "2A0719C5-75CB-4BDF-A78C-28FC06284DCD",
-      "ordinal" : 2,
-      "params" : {
-        "anchorID" : "22222222-2222-2222-2222-222222222222",
-        "modifiers" : [
-
-        ],
-        "pollIntervalMs" : 120
+      "enabled": true,
+      "id": "0d20dc7d-fffc-47c5-bcc1-31b780f30878",
+      "ordinal": 2,
+      "params": {
+        "anchorID": "22222222-2222-2222-2222-222222222222",
+        "modifiers": [],
+        "pollIntervalMs": 120
       },
-      "postconditions" : [
-
-      ],
-      "preconditions" : [
-
-      ],
-      "timeoutMs" : 5000,
-      "type" : "waitForAnchor"
+      "postconditions": [],
+      "preconditions": [],
+      "timeoutMs": 5000,
+      "type": "waitForAnchor"
     },
     {
-      "enabled" : true,
-      "id" : "4CD7E6F9-D764-4FAF-8B7A-11AE312FF091",
-      "ordinal" : 3,
-      "params" : {
-        "button" : "left",
-        "modifiers" : [
-
-        ],
-        "point" : {
-          "x" : 0.64,
-          "y" : 0.38
+      "enabled": true,
+      "id": "9dc06b33-3def-43a4-a48a-f042be4302c8",
+      "ordinal": 3,
+      "params": {
+        "button": "left",
+        "modifiers": [],
+        "point": {
+          "x": 0.64,
+          "y": 0.38
         }
       },
-      "postconditions" : [
-
-      ],
-      "preconditions" : [
-
-      ],
-      "type" : "clickAt"
+      "postconditions": [],
+      "preconditions": [],
+      "type": "clickAt"
     },
     {
-      "enabled" : true,
-      "id" : "08439BEC-FF2D-46DC-B310-E77DFA6B38A0",
-      "ordinal" : 4,
-      "params" : {
-        "keyCode" : "SPACE",
-        "modifiers" : [
-
-        ]
+      "enabled": true,
+      "id": "f66234d0-e606-4303-9d85-8b5561bde7e3",
+      "ordinal": 4,
+      "params": {
+        "keyCode": "SPACE",
+        "modifiers": []
       },
-      "postconditions" : [
-
-      ],
-      "preconditions" : [
-
-      ],
-      "type" : "pressKey"
+      "postconditions": [],
+      "preconditions": [],
+      "type": "pressKey"
     },
     {
-      "enabled" : true,
-      "id" : "21D6BDF9-72E9-44A7-A118-C66638F0DE61",
-      "ordinal" : 5,
-      "params" : {
-        "label" : "after_action",
-        "modifiers" : [
-
-        ]
+      "enabled": true,
+      "id": "2cfa133b-dfe8-4aca-b27a-70db37d6795b",
+      "ordinal": 5,
+      "params": {
+        "label": "after_action",
+        "modifiers": []
       },
-      "postconditions" : [
-
-      ],
-      "preconditions" : [
-
-      ],
-      "type" : "checkpointScreenshot"
+      "postconditions": [],
+      "preconditions": [],
+      "type": "checkpointScreenshot"
     }
   ],
-  "targetHint" : {
-    "appName" : "Practice Java Window",
-    "bundleID" : "com.example.GameLauncher",
-    "windowTitleContains" : "Practice Arena"
+  "targetHint": {
+    "appName": "Practice Java Window",
+    "bundleID": "com.example.GameLauncher",
+    "windowTitleContains": "Practice Arena"
   },
-  "updatedAt" : "2026-03-16T17:52:35Z",
-  "version" : 1
+  "updatedAt": "2026-03-20T11:55:04.008Z",
+  "version": 1
 }

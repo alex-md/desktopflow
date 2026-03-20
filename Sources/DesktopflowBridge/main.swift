@@ -40,6 +40,17 @@ struct RecorderEventEnvelope: Codable {
     var steps: [FlowStep]?
 }
 
+enum RecorderSessionError: LocalizedError {
+    case eventTapUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .eventTapUnavailable:
+            return "Desktopflow could not install a macOS input event tap. Check Input Monitoring permission and restart the app."
+        }
+    }
+}
+
 @main
 struct DesktopflowBridge {
     static func main() {
@@ -127,22 +138,27 @@ struct DesktopflowBridge {
 
         let data = Data(targetHintJSON.utf8)
         let targetHint = try makeDecoder().decode(TargetHint.self, from: data)
-        let semaphore = DispatchSemaphore(value: 0)
         let sessionBox = LockedBox<RecorderSession>()
         let errorBox = LockedBox<Error>()
+        let completionBox = LockedBox<Bool>()
+        completionBox.value = false
 
         Task { @MainActor in
             do {
+                let application = NSApplication.shared
+                application.setActivationPolicy(.accessory)
                 let session = RecorderSession(targetHint: targetHint)
-                try await session.start()
+                try session.start()
                 sessionBox.value = session
             } catch {
                 errorBox.value = error
             }
-            semaphore.signal()
+            completionBox.value = true
         }
 
-        semaphore.wait()
+        while completionBox.value != true {
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+        }
 
         if let error = errorBox.value {
             throw error
@@ -152,24 +168,31 @@ struct DesktopflowBridge {
             throw BridgeError.invalidTargetHint("Recorder session could not be created.")
         }
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            while let line = readLine(strippingNewline: true) {
-                if line.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "stop" {
-                    Task { @MainActor in
-                        session.stop()
-                    }
-                    return
+        FileHandle.standardInput.readabilityHandler = { handle in
+            let data = handle.availableData
+
+            if data.isEmpty {
+                FileHandle.standardInput.readabilityHandler = nil
+                Task { @MainActor in
+                    session.stop()
                 }
+                return
             }
 
-            Task { @MainActor in
-                session.stop()
+            let text = String(decoding: data, as: UTF8.self)
+            if text
+                .split(whereSeparator: \.isNewline)
+                .contains(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "stop" }) {
+                FileHandle.standardInput.readabilityHandler = nil
+                Task { @MainActor in
+                    session.stop()
+                }
             }
         }
 
         RunLoop.main.run()
     }
-    private static func currentPermissions() -> PermissionSnapshot {
+    static func currentPermissions() -> PermissionSnapshot {
         PermissionSnapshot(
             accessibility: AXIsProcessTrusted(),
             inputMonitoring: CGPreflightListenEventAccess(),
@@ -253,31 +276,26 @@ final class RecorderSession {
     private let targetHint: TargetHint
     private let windowCatalog = SystemWindowCatalog()
     private var recordingWindow: BoundWindow?
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
+    private var eventTap: CFMachPort?
+    private var eventTapSource: CFRunLoopSource?
     private(set) var recordedSteps: [FlowStep] = []
     private var isRecording = false
     private var pipeline: RecorderSemanticPipeline
+    private var rawEventCount = 0
+    private var rawMouseEventCount = 0
+    private var rawKeyEventCount = 0
+    private var droppedMouseOutsideWindowCount = 0
+    private var droppedKeyWrongAppCount = 0
+    private var droppedModifierOnlyKeyCount = 0
 
     init(targetHint: TargetHint) {
         self.targetHint = targetHint
         self.pipeline = RecorderSemanticPipeline(targetHint: targetHint)
     }
 
-    func start() async throws {
-        recordingWindow = try await windowCatalog.attach(using: targetHint)
-        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .keyDown]
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
-            Task { @MainActor [weak self] in
-                await self?.handleRecordedEvent(event)
-            }
-        }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
-            Task { @MainActor [weak self] in
-                await self?.handleRecordedEvent(event)
-            }
-            return event
-        }
+    func start() throws {
+        recordingWindow = try windowCatalog.resolveWindowSync(using: targetHint)
+        try installEventTap()
         isRecording = true
         DesktopflowBridge.writeRecorderEvent(RecorderEventEnvelope(type: "ready"))
     }
@@ -285,18 +303,12 @@ final class RecorderSession {
     func stop() {
         guard isRecording else { return }
         isRecording = false
-        if let globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
-            self.globalMonitor = nil
-        }
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            self.localMonitor = nil
-        }
+        removeEventTap()
+        FileHandle.standardInput.readabilityHandler = nil
         DesktopflowBridge.writeRecorderEvent(
             RecorderEventEnvelope(
                 type: "stopped",
-                message: recordedSteps.isEmpty ? "Recording stopped with no captured steps." : "Recording stopped with \(recordedSteps.count) captured steps.",
+                message: stopMessage(),
                 count: recordedSteps.count,
                 steps: recordedSteps
             )
@@ -304,31 +316,91 @@ final class RecorderSession {
         CFRunLoopStop(CFRunLoopGetMain())
     }
 
-    private func handleRecordedEvent(_ event: NSEvent) async {
+    private func installEventTap() throws {
+        let mask = eventMask(for: .leftMouseDown) | eventMask(for: .rightMouseDown) | eventMask(for: .keyDown)
+        let callback: CGEventTapCallBack = { _, type, event, userInfo in
+            guard let userInfo else {
+                return Unmanaged.passUnretained(event)
+            }
+
+            let session = Unmanaged<RecorderSession>.fromOpaque(userInfo).takeUnretainedValue()
+            Task { @MainActor in
+                await session.handleRecordedEvent(type: type, event: event)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        guard let eventTap = CGEvent.tapCreate(
+            tap: .cghidEventTap,
+            place: .headInsertEventTap,
+            options: .listenOnly,
+            eventsOfInterest: mask,
+            callback: callback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            throw RecorderSessionError.eventTapUnavailable
+        }
+
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0) else {
+            CFMachPortInvalidate(eventTap)
+            throw RecorderSessionError.eventTapUnavailable
+        }
+
+        self.eventTap = eventTap
+        self.eventTapSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+    }
+
+    private func removeEventTap() {
+        if let source = eventTapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+            eventTapSource = nil
+        }
+
+        if let eventTap {
+            CFMachPortInvalidate(eventTap)
+            self.eventTap = nil
+        }
+    }
+
+    private func eventMask(for type: CGEventType) -> CGEventMask {
+        CGEventMask(1) << type.rawValue
+    }
+
+    private func handleRecordedEvent(type: CGEventType, event: CGEvent) async {
         guard isRecording else { return }
+        rawEventCount += 1
+        let eventTimestamp = NSEvent(cgEvent: event)?.timestamp ?? ProcessInfo.processInfo.systemUptime
 
         if let latestWindow = try? await windowCatalog.attach(using: targetHint) {
             recordingWindow = latestWindow
         }
 
-        switch event.type {
+        switch type {
+        case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
         case .leftMouseDown, .rightMouseDown:
+            rawMouseEventCount += 1
             recordEvent(
                 RecordedLowLevelEvent(
-                    timestamp: event.timestampDate,
+                    timestamp: eventTimestamp,
                     kind: .mouseDown(
-                        button: event.type == .rightMouseDown ? .right : .left,
+                        button: type == .rightMouseDown ? .right : .left,
                         location: ScreenPoint(
-                            x: (event.cgEvent?.location ?? NSEvent.mouseLocation).x,
-                            y: (event.cgEvent?.location ?? NSEvent.mouseLocation).y
+                            x: event.location.x,
+                            y: event.location.y
                         )
                     )
                 )
             )
         case .keyDown:
+            rawKeyEventCount += 1
             recordEvent(
                 RecordedLowLevelEvent(
-                    timestamp: event.timestampDate,
+                    timestamp: eventTimestamp,
                     kind: .keyDown(
                         keyCode: keyIdentifier(for: event),
                         modifiers: modifiers(for: event),
@@ -342,6 +414,27 @@ final class RecorderSession {
     }
 
     private func recordEvent(_ event: RecordedLowLevelEvent) {
+        switch event.kind {
+        case .mouseDown(_, let location):
+            guard let recordingWindow else { return }
+            guard recordingWindow.geometry.contentRect.contains(location) else {
+                droppedMouseOutsideWindowCount += 1
+                return
+            }
+        case .keyDown(let keyCode, _, let bundleID):
+            if RecorderSemanticPipeline.isModifierOnlyRecorderKey(keyCode) {
+                droppedModifierOnlyKeyCount += 1
+                return
+            }
+
+            if let expectedBundleID = recordingWindow?.descriptor.bundleID ?? targetHint.bundleID,
+               let bundleID,
+               expectedBundleID != bundleID {
+                droppedKeyWrongAppCount += 1
+                return
+            }
+        }
+
         let newSteps = pipeline.consume(event, in: recordingWindow)
         guard !newSteps.isEmpty else { return }
 
@@ -358,6 +451,34 @@ final class RecorderSession {
                 )
             )
         }
+    }
+
+    private func stopMessage() -> String {
+        guard recordedSteps.isEmpty else {
+            return "Recording stopped with \(recordedSteps.count) captured steps."
+        }
+
+        if rawEventCount == 0 {
+            let permissions = DesktopflowBridge.currentPermissions()
+            if !permissions.accessibility || !permissions.inputMonitoring {
+                return "Recording stopped with no captured steps. The bridge saw 0 input events; grant Accessibility and Input Monitoring in macOS Settings."
+            }
+            return "Recording stopped with no captured steps. The bridge saw 0 input events from macOS."
+        }
+
+        if droppedMouseOutsideWindowCount > 0 && rawMouseEventCount == droppedMouseOutsideWindowCount && rawKeyEventCount == 0 {
+            return "Recording stopped with no captured steps. Mouse events were seen, but they landed outside the selected target window."
+        }
+
+        if droppedKeyWrongAppCount > 0 && rawKeyEventCount == droppedKeyWrongAppCount && rawMouseEventCount == 0 {
+            return "Recording stopped with no captured steps. Key events were seen, but the selected target app was not frontmost."
+        }
+
+        if droppedModifierOnlyKeyCount > 0 && rawKeyEventCount == droppedModifierOnlyKeyCount && rawMouseEventCount == 0 {
+            return "Recording stopped with no captured steps. Only modifier keys were pressed."
+        }
+
+        return "Recording stopped with no captured steps. Raw events were seen, but none matched the selected target window/app filters."
     }
 
     private func keyIdentifier(for event: NSEvent) -> String {
@@ -386,15 +507,62 @@ final class RecorderSession {
         }
     }
 
-    private func modifiers(for event: NSEvent) -> [String] {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    private func keyIdentifier(for event: CGEvent) -> String {
+        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+        switch keyCode {
+        case 36:
+            return "RETURN"
+        case 48:
+            return "TAB"
+        case 49:
+            return "SPACE"
+        case 51:
+            return "DELETE"
+        case 53:
+            return "ESCAPE"
+        case 123:
+            return "LEFT"
+        case 124:
+            return "RIGHT"
+        case 125:
+            return "DOWN"
+        case 126:
+            return "UP"
+        default:
+            if let unicodeString = event.readUnicodeString(),
+               !unicodeString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return unicodeString.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            }
+            return "KEY_\(keyCode)"
+        }
+    }
+
+    private func modifiers(for event: CGEvent) -> [String] {
+        let flags = event.flags
         var modifiers: [String] = []
-        if flags.contains(.command) { modifiers.append("command") }
-        if flags.contains(.option) { modifiers.append("option") }
-        if flags.contains(.control) { modifiers.append("control") }
-        if flags.contains(.shift) { modifiers.append("shift") }
-        if flags.contains(.capsLock) { modifiers.append("capsLock") }
+        if flags.contains(.maskCommand) { modifiers.append("command") }
+        if flags.contains(.maskAlternate) { modifiers.append("option") }
+        if flags.contains(.maskControl) { modifiers.append("control") }
+        if flags.contains(.maskShift) { modifiers.append("shift") }
+        if flags.contains(.maskAlphaShift) { modifiers.append("capsLock") }
         return modifiers
+    }
+}
+
+private extension CGEvent {
+    func readUnicodeString() -> String? {
+        var length: Int = 0
+        keyboardGetUnicodeString(maxStringLength: 0, actualStringLength: &length, unicodeString: nil)
+        guard length > 0 else { return nil }
+
+        let buffer = UnsafeMutablePointer<UniChar>.allocate(capacity: length)
+        defer { buffer.deallocate() }
+
+        var actualLength: Int = 0
+        keyboardGetUnicodeString(maxStringLength: length, actualStringLength: &actualLength, unicodeString: buffer)
+        guard actualLength > 0 else { return nil }
+
+        return String(utf16CodeUnits: buffer, count: actualLength)
     }
 }
 

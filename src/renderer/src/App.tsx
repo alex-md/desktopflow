@@ -7,6 +7,7 @@ import type {
   MouseButton,
   PermissionSnapshot,
   RecorderEvent,
+  RecorderStatus,
   StepType,
   WorkspacePayload
 } from "../../shared/models";
@@ -227,6 +228,14 @@ const KeyValue = ({ label, value }: { label: string; value: string }) => (
 
 const permissionLabel = (granted: boolean) => (granted ? "Granted" : "Missing");
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  return error.message.replace(/^Error invoking remote method '[^']+': Error: /, "");
+};
+
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
   const [selectedSection, setSelectedSection] = useState<AppSection>("overview");
@@ -241,6 +250,7 @@ export default function App() {
   const [recorderFlowName, setRecorderFlowName] = useState("Recorded Flow");
   const [recordedSteps, setRecordedSteps] = useState<FlowStep[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecorderPending, setIsRecorderPending] = useState(false);
   const [recorderStatus, setRecorderStatus] = useState("Idle");
   const [isRunningFlow, setIsRunningFlow] = useState(false);
   const [runnerStatus, setRunnerStatus] = useState("Idle");
@@ -307,15 +317,41 @@ export default function App() {
     }
   };
 
+  const applyRecorderStatus = (status: RecorderStatus) => {
+    setIsRecording(status.active);
+    setIsRecorderPending(status.active && !status.ready);
+
+    if (!status.active) {
+      setRecorderStatus("Idle");
+      return;
+    }
+
+    setRecorderStatus(
+      status.ready
+        ? "Native recorder is already live. Stop it before starting a new session."
+        : "Native recorder is still starting. Wait for it to become ready or close the app window to reset it."
+    );
+  };
+
+  const loadRecorderStatus = async () => {
+    try {
+      applyRecorderStatus(await window.desktopflow.getRecorderStatus());
+    } catch (error) {
+      setLastError(getErrorMessage(error, "Failed to load recorder status."));
+    }
+  };
+
   useEffect(() => {
     void loadWorkspace();
     void loadPermissions();
+    void loadRecorderStatus();
   }, []);
 
   useEffect(() => {
     const unsubscribe = window.desktopflow.onRecorderEvent((event: RecorderEvent) => {
       if (event.type === "ready") {
         setIsRecording(true);
+        setIsRecorderPending(false);
         setRecorderStatus("Native recorder is live. Interact with the selected app.");
         return;
       }
@@ -330,12 +366,14 @@ export default function App() {
 
       if (event.type === "stopped") {
         setIsRecording(false);
+        setIsRecorderPending(false);
         setRecordedSteps(event.steps ?? []);
         setRecorderStatus(event.message ?? "Recording stopped.");
         return;
       }
 
       setIsRecording(false);
+      setIsRecorderPending(false);
       setRecorderStatus(event.message ?? "Recording failed.");
     });
 
@@ -410,7 +448,20 @@ export default function App() {
       return;
     }
 
+    try {
+      const livePermissions = await window.desktopflow.getPermissions();
+      setPermissions(livePermissions);
+      if (!livePermissions.accessibility || !livePermissions.inputMonitoring) {
+        setRecorderStatus("Grant Accessibility and Input Monitoring in macOS Settings before recording.");
+        return;
+      }
+    } catch (error) {
+      setRecorderStatus(getErrorMessage(error, "Failed to verify permissions."));
+      return;
+    }
+
     setRecordedSteps([]);
+    setIsRecorderPending(true);
     setRecorderStatus(`Starting native recorder for ${selectedWindow.appName} / ${selectedWindow.title}...`);
 
     try {
@@ -422,23 +473,29 @@ export default function App() {
       });
     } catch (error) {
       setIsRecording(false);
-      setRecorderStatus(error instanceof Error ? error.message : "Failed to start recording.");
+      setIsRecorderPending(false);
+      const message = getErrorMessage(error, "Failed to start recording.");
+      setRecorderStatus(message);
+      if (message === "Recording is already in progress.") {
+        void loadRecorderStatus();
+      }
     }
   };
 
   const stopRecording = async () => {
     try {
       const steps = await window.desktopflow.stopRecording();
-      setRecordedSteps(steps);
+      const finalSteps = steps.length > 0 ? steps : recordedSteps;
+      setRecordedSteps(finalSteps);
       setIsRecording(false);
-      setRecorderStatus(
-        steps.length === 0
-          ? "Recording stopped with no captured steps."
-          : `Recording stopped with ${steps.length} captured steps.`
-      );
+      setIsRecorderPending(false);
+      if (finalSteps.length > 0) {
+        setRecorderStatus(`Recording stopped with ${finalSteps.length} captured steps.`);
+      }
     } catch (error) {
       setIsRecording(false);
-      setRecorderStatus(error instanceof Error ? error.message : "Failed to stop recording.");
+      setIsRecorderPending(false);
+      setRecorderStatus(getErrorMessage(error, "Failed to stop recording."));
     }
   };
 
@@ -762,13 +819,13 @@ export default function App() {
                   <button className="ghost" onClick={() => void refreshWindows()} type="button">
                     Refresh Targets
                   </button>
-                  <button className="primary" disabled={!selectedWindow || isRecording} onClick={() => void startRecording()} type="button">
+                  <button className="primary" disabled={!selectedWindow || isRecording || isRecorderPending} onClick={() => void startRecording()} type="button">
                     Start Recording
                   </button>
-                  <button className="ghost" disabled={!isRecording} onClick={() => void stopRecording()} type="button">
+                  <button className="ghost" disabled={!isRecording && !isRecorderPending} onClick={() => void stopRecording()} type="button">
                     Stop
                   </button>
-                  <button className="primary" disabled={recordedSteps.length === 0 || isRecording} onClick={() => void saveRecording()} type="button">
+                  <button className="primary" disabled={recordedSteps.length === 0 || isRecording || isRecorderPending} onClick={() => void saveRecording()} type="button">
                     Save Recording
                   </button>
                 </div>

@@ -132,6 +132,12 @@ export interface RecorderEvent {
   steps?: FlowStep[];
 }
 
+export interface RecorderStatus {
+  active: boolean;
+  ready: boolean;
+  startedAt?: string;
+}
+
 export interface WorkspacePayload {
   flows: Flow[];
   anchors: Anchor[];

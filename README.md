@@ -25,7 +25,33 @@ For a production build:
 npm run build
 ```
 
-The app resolves its workspace from `./WorkspaceData` by default. Override that with `DESKTOPFLOW_WORKSPACE_ROOT` if you want to point the Electron app at a different project root.
+To produce a downloadable macOS app bundle and `.dmg`:
+
+```bash
+npm run dist:mac
+```
+
+That build:
+
+- compiles the Electron app into `out/`
+- compiles the native Swift bridge in release mode
+- bundles the bridge and seed `WorkspaceData/` into `Desktopflow.app`
+- emits a `.dmg` into `dist/`
+
+Packaged builds no longer write into the app bundle. On first launch, Desktopflow seeds a writable workspace under the current user's application data directory and runs from there.
+
+If you want Gatekeeper-friendly distribution, provide Apple signing credentials before packaging:
+
+```bash
+export APPLE_ID="you@example.com"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+export APPLE_TEAM_ID="TEAMID1234"
+npm run dist:mac
+```
+
+Without those variables, the app still packages successfully, but electron-builder falls back to ad-hoc signing and skips notarization.
+
+During development, the app resolves its workspace from `./WorkspaceData` by default. Packaged builds use a writable workspace under the current user's app data directory unless `DESKTOPFLOW_WORKSPACE_ROOT` is set.
 
 ## Port boundary
 

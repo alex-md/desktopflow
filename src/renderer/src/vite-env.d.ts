@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { Flow, FlowRunReport, FlowStep, PermissionSnapshot, RecorderEvent, TargetHint, WorkspacePayload } from "../../shared/models";
+import type { Flow, FlowRunReport, FlowStep, PermissionSnapshot, RecorderEvent, RecorderStatus, TargetHint, WorkspacePayload } from "../../shared/models";
 
 declare global {
   interface Window {
@@ -11,6 +11,7 @@ declare global {
       runFlow: (flow: Flow) => Promise<FlowRunReport>;
       abortFlow: (flowID: string) => Promise<boolean>;
       getPermissions: () => Promise<PermissionSnapshot>;
+      getRecorderStatus: () => Promise<RecorderStatus>;
       startRecording: (targetHint: TargetHint) => Promise<boolean>;
       stopRecording: () => Promise<FlowStep[]>;
       onRecorderEvent: (listener: (event: RecorderEvent) => void) => () => void;

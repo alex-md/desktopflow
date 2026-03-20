@@ -6,10 +6,10 @@ public enum RecordedLowLevelEventKind: Hashable, Sendable {
 }
 
 public struct RecordedLowLevelEvent: Hashable, Sendable {
-    public var timestamp: Date
+    public var timestamp: TimeInterval
     public var kind: RecordedLowLevelEventKind
 
-    public init(timestamp: Date = .now, kind: RecordedLowLevelEventKind) {
+    public init(timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime, kind: RecordedLowLevelEventKind) {
         self.timestamp = timestamp
         self.kind = kind
     }
@@ -19,7 +19,7 @@ public struct RecorderPipelineConfiguration: Hashable, Sendable {
     public var idleWaitThresholdMs: Int
     public var minimumWaitMs: Int
 
-    public init(idleWaitThresholdMs: Int = 900, minimumWaitMs: Int = 250) {
+    public init(idleWaitThresholdMs: Int = 350, minimumWaitMs: Int = 250) {
         self.idleWaitThresholdMs = max(0, idleWaitThresholdMs)
         self.minimumWaitMs = max(0, minimumWaitMs)
     }
@@ -28,7 +28,7 @@ public struct RecorderPipelineConfiguration: Hashable, Sendable {
 public struct RecorderSemanticPipeline: Sendable {
     private let targetHint: TargetHint
     private let configuration: RecorderPipelineConfiguration
-    private var lastAcceptedEventAt: Date?
+    private var lastAcceptedEventAt: TimeInterval?
 
     public init(
         targetHint: TargetHint,
@@ -49,7 +49,7 @@ public struct RecorderSemanticPipeline: Sendable {
         var emittedSteps: [FlowStep] = []
 
         if let lastAcceptedEventAt {
-            let gapMs = Int((event.timestamp.timeIntervalSince(lastAcceptedEventAt) * 1000).rounded())
+            let gapMs = Int(((event.timestamp - lastAcceptedEventAt) * 1000).rounded())
             if gapMs >= configuration.idleWaitThresholdMs {
                 emittedSteps.append(
                     FlowStep.wait(
@@ -99,12 +99,16 @@ public struct RecorderSemanticPipeline: Sendable {
         }
     }
 
-    private static func isModifierOnlyKey(_ keyCode: String) -> Bool {
+    public static func isModifierOnlyRecorderKey(_ keyCode: String) -> Bool {
         switch keyCode.uppercased() {
         case "KEY_54", "KEY_55", "KEY_56", "KEY_57", "KEY_58", "KEY_59", "KEY_60", "KEY_61", "KEY_62", "KEY_63":
             return true
         default:
             return false
         }
+    }
+
+    private static func isModifierOnlyKey(_ keyCode: String) -> Bool {
+        isModifierOnlyRecorderKey(keyCode)
     }
 }

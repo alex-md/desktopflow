@@ -50,10 +50,10 @@ struct DesktopflowChecks {
 
         var pipeline = RecorderSemanticPipeline(
             targetHint: TargetHint(bundleID: "com.example.Target"),
-            configuration: RecorderPipelineConfiguration(idleWaitThresholdMs: 900, minimumWaitMs: 250)
+            configuration: RecorderPipelineConfiguration(idleWaitThresholdMs: 350, minimumWaitMs: 250)
         )
 
-        let start = Date(timeIntervalSinceReferenceDate: 10_000)
+        let start: TimeInterval = 10_000
         let first = pipeline.consume(
             RecordedLowLevelEvent(
                 timestamp: start,
@@ -63,8 +63,15 @@ struct DesktopflowChecks {
         )
         let second = pipeline.consume(
             RecordedLowLevelEvent(
-                timestamp: start.addingTimeInterval(1.4),
+                timestamp: start + 1.4,
                 kind: .keyDown(keyCode: "SPACE", modifiers: [], bundleID: "com.example.Target")
+            ),
+            in: window
+        )
+        let third = pipeline.consume(
+            RecordedLowLevelEvent(
+                timestamp: start + 1.8,
+                kind: .mouseDown(button: .left, location: ScreenPoint(x: 600, y: 470))
             ),
             in: window
         )
@@ -75,6 +82,10 @@ struct DesktopflowChecks {
         try expect(second.first?.type == .wait, "Recorder pipeline should emit a wait step after an idle gap.")
         try expect(second.last?.type == .pressKey, "Key down should become a pressKey semantic step.")
         try expect(second.first?.params.durationMs == 1_400, "Wait duration should preserve the observed idle gap.")
+        try expect(third.count == 2, "Consecutive clicks with a short pause should still capture an explicit wait.")
+        try expect(third.first?.type == .wait, "Short click pauses should become wait steps.")
+        try expect(third.first?.params.durationMs == 400, "Short click waits should preserve the observed pause.")
+        try expect(third.last?.type == .clickAt, "The click after a short pause should still be recorded.")
     }
 
     private static func runnerCheck() async throws {

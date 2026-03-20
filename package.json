@@ -1,14 +1,16 @@
 {
   "name": "desktopflow",
   "version": "0.1.0",
-  "private": true,
   "description": "Electron port of the Desktopflow automation workspace.",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:bridge": "swift build -c release --product DesktopflowBridge",
+    "dist:mac": "npm run build && npm run build:bridge && electron-builder --mac dmg",
+    "dist:dir": "npm run build && npm run build:bridge && electron-builder --dir"
   },
   "dependencies": {
     "react": "^19.1.1",
@@ -19,9 +21,48 @@
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.3",
+    "@electron/notarize": "^3.1.0",
     "electron": "^38.1.0",
+    "electron-builder": "^26.0.12",
     "electron-vite": "^4.0.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.5"
+  },
+  "build": {
+    "appId": "com.desktopflow.app",
+    "productName": "Desktopflow",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".build/release/DesktopflowBridge",
+        "to": "bin/DesktopflowBridge"
+      },
+      {
+        "from": "WorkspaceData",
+        "to": "WorkspaceData"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "afterSign": "build/notarize.cjs"
   }
 }

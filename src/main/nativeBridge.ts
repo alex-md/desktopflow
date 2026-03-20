@@ -1,20 +1,26 @@
+import { app } from "electron";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { FlowRunReport, FlowStep, PermissionSnapshot, RecorderEvent, TargetHint, WindowDescriptor } from "../shared/models";
+import type { FlowRunReport, FlowStep, PermissionSnapshot, RecorderEvent, RecorderStatus, TargetHint, WindowDescriptor } from "../shared/models";
 
 const execFileAsync = promisify(execFile);
 const workspaceRoot = path.resolve(process.cwd());
 const swiftPackageRoot = workspaceRoot;
 const bridgeDebugBinary = path.join(swiftPackageRoot, ".build", "debug", "DesktopflowBridge");
 const bridgeReleaseBinary = path.join(swiftPackageRoot, ".build", "release", "DesktopflowBridge");
+const packagedBridgeBinary = path.join(process.resourcesPath, "bin", "DesktopflowBridge");
 
 let ensuredBridgePathPromise: Promise<string> | null = null;
 
 type RecorderState = {
   child: ReturnType<typeof spawn>;
   stopPromise: Promise<FlowStep[]>;
+  startedAt: string;
+  ready: boolean;
+  stopRequested: boolean;
+  capturedSteps: FlowStep[];
 };
 
 type RunState = {
@@ -39,7 +45,42 @@ const clearRecorderState = (state: RecorderState) => {
   }
 };
 
+const forceStopRecorderState = (state: RecorderState, message = "Recording was force-stopped."): FlowStep[] => {
+  clearRecorderState(state);
+
+  if (state.child.exitCode === null && state.child.signalCode === null) {
+    state.child.kill("SIGTERM");
+  }
+
+  broadcastRecorderEvent({
+    type: "stopped",
+    message,
+    count: state.capturedSteps.length,
+    steps: state.capturedSteps
+  });
+
+  return state.capturedSteps;
+};
+
+const getLiveRecorderState = (): RecorderState | null => {
+  if (recorderState && (recorderState.child.exitCode !== null || recorderState.child.signalCode !== null)) {
+    recorderState = null;
+  }
+
+  return recorderState;
+};
+
+const bridgeWorkingDirectory = () => (app.isPackaged ? process.resourcesPath : swiftPackageRoot);
+
 const buildBridge = async (): Promise<string> => {
+  if (app.isPackaged) {
+    if (existsSync(packagedBridgeBinary)) {
+      return packagedBridgeBinary;
+    }
+
+    throw new Error("DesktopflowBridge is missing from the packaged app resources.");
+  }
+
   if (existsSync(bridgeDebugBinary)) {
     return bridgeDebugBinary;
   }
@@ -78,7 +119,7 @@ const runBridgeCommand = async (args: string[]): Promise<string> => {
 
   try {
     const { stdout } = await execFileAsync(binary, args, {
-      cwd: swiftPackageRoot,
+      cwd: bridgeWorkingDirectory(),
       maxBuffer: 10 * 1024 * 1024
     });
     return stdout.trim();
@@ -103,6 +144,22 @@ export const getPermissionSnapshot = async (): Promise<PermissionSnapshot> => {
   return parseJson<PermissionSnapshot>(stdout);
 };
 
+export const getNativeRecorderStatus = (): RecorderStatus => {
+  const state = getLiveRecorderState();
+  if (!state) {
+    return {
+      active: false,
+      ready: false
+    };
+  }
+
+  return {
+    active: true,
+    ready: state.ready,
+    startedAt: state.startedAt
+  };
+};
+
 export const runNativeFlow = async (workspaceDataRoot: string, flowID: string): Promise<FlowRunReport> => {
   if (runState) {
     throw new Error("A native flow run is already in progress.");
@@ -110,7 +167,7 @@ export const runNativeFlow = async (workspaceDataRoot: string, flowID: string): 
 
   const binary = await ensureBridgePath();
   const child = spawn(binary, ["run-flow", workspaceDataRoot, flowID], {
-    cwd: swiftPackageRoot,
+    cwd: bridgeWorkingDirectory(),
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -178,13 +235,22 @@ export const abortNativeFlow = async (flowID: string): Promise<boolean> => {
 };
 
 export const startNativeRecording = async (targetHint: TargetHint): Promise<void> => {
-  if (recorderState) {
+  const permissions = await getPermissionSnapshot();
+  if (!permissions.accessibility || !permissions.inputMonitoring) {
+    const missingPermissions = [
+      !permissions.accessibility ? "Accessibility" : null,
+      !permissions.inputMonitoring ? "Input Monitoring" : null
+    ].filter(Boolean);
+    throw new Error(`Grant ${missingPermissions.join(" and ")} access in macOS Settings before recording.`);
+  }
+
+  if (getLiveRecorderState()) {
     throw new Error("Recording is already in progress.");
   }
 
   const binary = await ensureBridgePath();
   const child = spawn(binary, ["record", JSON.stringify(targetHint)], {
-    cwd: swiftPackageRoot,
+    cwd: bridgeWorkingDirectory(),
     stdio: ["pipe", "pipe", "pipe"]
   });
 
@@ -193,7 +259,14 @@ export const startNativeRecording = async (targetHint: TargetHint): Promise<void
   let stopResolved = false;
   let readyResolved = false;
   let failed = false;
-  let state!: RecorderState;
+  const state: RecorderState = {
+    child,
+    stopPromise: Promise.resolve([]),
+    startedAt: new Date().toISOString(),
+    ready: false,
+    stopRequested: false,
+    capturedSteps: []
+  };
 
   let resolveReady!: () => void;
   let rejectReady!: (error: Error) => void;
@@ -236,18 +309,31 @@ export const startNativeRecording = async (targetHint: TargetHint): Promise<void
         }
 
         const event = parseJson<RecorderEvent>(line);
-        broadcastRecorderEvent(event);
 
         if (event.type === "ready" && !readyResolved) {
+          state.ready = true;
           readyResolved = true;
           resolveReady();
         }
 
+        if (event.type === "stepCaptured" && event.step) {
+          state.capturedSteps.push(event.step);
+        }
+
         if (event.type === "stopped") {
+          const resolvedSteps = event.steps && event.steps.length > 0 ? event.steps : state.capturedSteps;
           stopResolved = true;
           clearRecorderState(state);
-          resolve(event.steps ?? []);
+          broadcastRecorderEvent({
+            ...event,
+            count: resolvedSteps.length,
+            steps: resolvedSteps
+          });
+          resolve(resolvedSteps);
+          continue;
         }
+
+        broadcastRecorderEvent(event);
       }
     });
 
@@ -269,6 +355,13 @@ export const startNativeRecording = async (targetHint: TargetHint): Promise<void
         return;
       }
 
+      if (state.stopRequested) {
+        stopResolved = true;
+        clearRecorderState(state);
+        resolve(state.capturedSteps);
+        return;
+      }
+
       const message = stderrBuffer.trim() || `Recorder exited with code ${code ?? "unknown"}.`;
       const error = new Error(message);
       failRecordingStart(error);
@@ -277,24 +370,40 @@ export const startNativeRecording = async (targetHint: TargetHint): Promise<void
     });
   });
 
-  state = { child, stopPromise };
+  state.stopPromise = stopPromise;
   recorderState = state;
   await readyPromise;
 };
 
 export const stopNativeRecording = async (): Promise<FlowStep[]> => {
-  if (!recorderState) {
+  const state = getLiveRecorderState();
+  if (!state) {
     return [];
   }
 
-  const state = recorderState;
+  state.stopRequested = true;
+
   if (!state.child.stdin) {
-    clearRecorderState(state);
-    throw new Error("Recorder stdin is unavailable.");
+    return forceStopRecorderState(state, "Recorder stdin was unavailable. Recording was force-stopped.");
   }
+
   state.child.stdin.write("stop\n");
   state.child.stdin.end();
-  return state.stopPromise;
+
+  let stopTimeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<FlowStep[]>((resolve) => {
+    stopTimeout = setTimeout(() => {
+      resolve(forceStopRecorderState(state));
+    }, 1500);
+  });
+
+  try {
+    return await Promise.race([state.stopPromise, timeoutPromise]);
+  } finally {
+    if (stopTimeout) {
+      clearTimeout(stopTimeout);
+    }
+  }
 };
 
 declare global {
