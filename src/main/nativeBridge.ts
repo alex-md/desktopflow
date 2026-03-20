@@ -33,6 +33,12 @@ const broadcastRecorderEvent = (event: RecorderEvent) => {
 
 const parseJson = <T>(raw: string): T => JSON.parse(raw) as T;
 
+const clearRecorderState = (state: RecorderState) => {
+  if (recorderState === state) {
+    recorderState = null;
+  }
+};
+
 const buildBridge = async (): Promise<string> => {
   if (existsSync(bridgeDebugBinary)) {
     return bridgeDebugBinary;
@@ -184,7 +190,36 @@ export const startNativeRecording = async (targetHint: TargetHint): Promise<void
 
   let stdoutBuffer = "";
   let stderrBuffer = "";
-  let resolved = false;
+  let stopResolved = false;
+  let readyResolved = false;
+  let failed = false;
+  let state!: RecorderState;
+
+  let resolveReady!: () => void;
+  let rejectReady!: (error: Error) => void;
+
+  const readyPromise = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+
+  const failRecordingStart = (error: Error, broadcast = true) => {
+    if (failed) {
+      return;
+    }
+
+    failed = true;
+    clearRecorderState(state);
+
+    if (!readyResolved) {
+      readyResolved = true;
+      rejectReady(error);
+    }
+
+    if (broadcast) {
+      broadcastRecorderEvent({ type: "error", message: error.message });
+    }
+  };
 
   const stopPromise = new Promise<FlowStep[]>((resolve, reject) => {
     child.stdout.setEncoding("utf8");
@@ -203,8 +238,14 @@ export const startNativeRecording = async (targetHint: TargetHint): Promise<void
         const event = parseJson<RecorderEvent>(line);
         broadcastRecorderEvent(event);
 
+        if (event.type === "ready" && !readyResolved) {
+          readyResolved = true;
+          resolveReady();
+        }
+
         if (event.type === "stopped") {
-          resolved = true;
+          stopResolved = true;
+          clearRecorderState(state);
           resolve(event.steps ?? []);
         }
       }
@@ -216,23 +257,29 @@ export const startNativeRecording = async (targetHint: TargetHint): Promise<void
     });
 
     child.on("error", (error) => {
-      if (!resolved) {
+      failRecordingStart(error, false);
+
+      if (!stopResolved) {
         reject(error);
       }
     });
 
     child.on("close", (code) => {
-      if (resolved) {
+      if (stopResolved) {
         return;
       }
 
       const message = stderrBuffer.trim() || `Recorder exited with code ${code ?? "unknown"}.`;
-      broadcastRecorderEvent({ type: "error", message });
-      reject(new Error(message));
+      const error = new Error(message);
+      failRecordingStart(error);
+
+      reject(error);
     });
   });
 
-  recorderState = { child, stopPromise };
+  state = { child, stopPromise };
+  recorderState = state;
+  await readyPromise;
 };
 
 export const stopNativeRecording = async (): Promise<FlowStep[]> => {
@@ -241,8 +288,8 @@ export const stopNativeRecording = async (): Promise<FlowStep[]> => {
   }
 
   const state = recorderState;
-  recorderState = null;
   if (!state.child.stdin) {
+    clearRecorderState(state);
     throw new Error("Recorder stdin is unavailable.");
   }
   state.child.stdin.write("stop\n");
