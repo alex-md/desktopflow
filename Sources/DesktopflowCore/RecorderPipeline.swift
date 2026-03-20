@@ -19,7 +19,7 @@ public struct RecorderPipelineConfiguration: Hashable, Sendable {
     public var idleWaitThresholdMs: Int
     public var minimumWaitMs: Int
 
-    public init(idleWaitThresholdMs: Int = 350, minimumWaitMs: Int = 250) {
+    public init(idleWaitThresholdMs: Int = 120, minimumWaitMs: Int = 120) {
         self.idleWaitThresholdMs = max(0, idleWaitThresholdMs)
         self.minimumWaitMs = max(0, minimumWaitMs)
     }

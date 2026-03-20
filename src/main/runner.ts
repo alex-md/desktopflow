@@ -61,7 +61,7 @@ export const runFlow = async (flow: Flow): Promise<FlowRunReport> => {
         };
       }
 
-      const pause = step.type === "wait" ? Math.min(step.params.durationMs ?? 0, 1500) : 180;
+      const pause = step.type === "wait" ? Math.max(step.params.durationMs ?? 0, 0) : 180;
       await sleep(pause, controller.signal);
 
       stepResults.push({

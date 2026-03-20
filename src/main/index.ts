@@ -90,7 +90,7 @@ app.whenReady().then(async () => {
     return loadWorkspaceWithWindows();
   });
   ipcMain.handle("runner:run", async (_event, flow: Flow) =>
-    runNativeFlow(getWorkspaceRoot(), flow.id)
+    runNativeFlow(getWorkspaceRoot(), flow)
   );
   ipcMain.handle("runner:abort", async (_event, flowID: string) => abortNativeFlow(flowID));
   ipcMain.handle("system:permissions", async () => getPermissionSnapshot());

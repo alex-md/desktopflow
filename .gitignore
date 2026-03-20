@@ -38,3 +38,4 @@ dist-electron/
 *.swp
 *~
 *.log
+/WorkspaceData/flows

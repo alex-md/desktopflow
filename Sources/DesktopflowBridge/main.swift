@@ -57,7 +57,7 @@ struct DesktopflowBridge {
         do {
             let arguments = Array(CommandLine.arguments.dropFirst())
             guard let command = arguments.first else {
-                throw BridgeError.usage("Usage: DesktopflowBridge <list-windows|permissions|run-flow|record> ...")
+                throw BridgeError.usage("Usage: DesktopflowBridge <list-windows|permissions|run-flow|run-flow-json|record> ...")
             }
 
             switch command {
@@ -67,6 +67,8 @@ struct DesktopflowBridge {
                 try writeJSON(currentPermissions())
             case "run-flow":
                 try runFlowSync(arguments: Array(arguments.dropFirst()))
+            case "run-flow-json":
+                try runFlowJSONSync(arguments: Array(arguments.dropFirst()))
             case "record":
                 try runRecorder(arguments: Array(arguments.dropFirst()))
             default:
@@ -118,6 +120,52 @@ struct DesktopflowBridge {
         Task {
             do {
                 try await runFlow(arguments: arguments)
+            } catch {
+                errorBox.value = error
+            }
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+
+        if let error = errorBox.value {
+            throw error
+        }
+    }
+
+    private static func runFlowJSON(arguments: [String]) async throws {
+        guard arguments.count >= 2 else {
+            throw BridgeError.usage("Usage: DesktopflowBridge run-flow-json <workspace-root> <flow-json>")
+        }
+
+        let workspaceRoot = arguments[0]
+        let flowData = Data(arguments[1].utf8)
+        let flow = try makeDecoder().decode(Flow.self, from: flowData)
+        let anchorRepository = FileAnchorRepository(directoryURL: BridgeWorkspacePaths.anchorsDirectory(rootPath: workspaceRoot))
+        let anchors = try await anchorRepository.listAnchors()
+        let report = await FlowRunner(
+            windowBinder: SystemWindowCatalog(),
+            frameProvider: PlaceholderFrameProvider(),
+            matcher: PlaceholderTemplateMatcher(),
+            inputDispatcher: CoreGraphicsInputDispatcher()
+        ).run(
+            FlowRunRequest(
+                flow: flow,
+                anchorsByID: Dictionary(uniqueKeysWithValues: anchors.map { ($0.id, $0) })
+            ),
+            control: RunControl()
+        )
+
+        try writeJSON(report)
+    }
+
+    private static func runFlowJSONSync(arguments: [String]) throws {
+        let semaphore = DispatchSemaphore(value: 0)
+        let errorBox = LockedBox<Error>()
+
+        Task {
+            do {
+                try await runFlowJSON(arguments: arguments)
             } catch {
                 errorBox.value = error
             }
@@ -285,6 +333,7 @@ final class RecorderSession {
     private var rawMouseEventCount = 0
     private var rawKeyEventCount = 0
     private var droppedMouseOutsideWindowCount = 0
+    private var droppedMouseWrongAppCount = 0
     private var droppedKeyWrongAppCount = 0
     private var droppedModifierOnlyKeyCount = 0
 
@@ -371,7 +420,9 @@ final class RecorderSession {
     private func handleRecordedEvent(type: CGEventType, event: CGEvent) async {
         guard isRecording else { return }
         rawEventCount += 1
-        let eventTimestamp = NSEvent(cgEvent: event)?.timestamp ?? ProcessInfo.processInfo.systemUptime
+        // CG/NSEvent timestamps from the global event tap have not been stable in practice here.
+        // Measure gaps from a monotonic clock at receipt time so recorded waits match user pauses.
+        let eventTimestamp = ProcessInfo.processInfo.systemUptime
 
         if let latestWindow = try? await windowCatalog.attach(using: targetHint) {
             recordingWindow = latestWindow
@@ -417,6 +468,10 @@ final class RecorderSession {
         switch event.kind {
         case .mouseDown(_, let location):
             guard let recordingWindow else { return }
+            if !isTargetAppFrontmost() {
+                droppedMouseWrongAppCount += 1
+                return
+            }
             guard recordingWindow.geometry.contentRect.contains(location) else {
                 droppedMouseOutsideWindowCount += 1
                 return
@@ -470,6 +525,10 @@ final class RecorderSession {
             return "Recording stopped with no captured steps. Mouse events were seen, but they landed outside the selected target window."
         }
 
+        if droppedMouseWrongAppCount > 0 && rawMouseEventCount == droppedMouseWrongAppCount && rawKeyEventCount == 0 {
+            return "Recording stopped with no captured steps. Mouse events were seen, but the selected target app was not frontmost."
+        }
+
         if droppedKeyWrongAppCount > 0 && rawKeyEventCount == droppedKeyWrongAppCount && rawMouseEventCount == 0 {
             return "Recording stopped with no captured steps. Key events were seen, but the selected target app was not frontmost."
         }
@@ -479,6 +538,23 @@ final class RecorderSession {
         }
 
         return "Recording stopped with no captured steps. Raw events were seen, but none matched the selected target window/app filters."
+    }
+
+    private func isTargetAppFrontmost() -> Bool {
+        guard let frontmostApplication = NSWorkspace.shared.frontmostApplication else {
+            return false
+        }
+
+        if let expectedBundleID = recordingWindow?.descriptor.bundleID ?? targetHint.bundleID,
+           let frontmostBundleID = frontmostApplication.bundleIdentifier {
+            return expectedBundleID == frontmostBundleID
+        }
+
+        if let expectedOwnerPID = recordingWindow?.descriptor.ownerPID ?? targetHint.ownerPID {
+            return Int(frontmostApplication.processIdentifier) == expectedOwnerPID
+        }
+
+        return true
     }
 
     private func keyIdentifier(for event: NSEvent) -> String {
@@ -563,11 +639,5 @@ private extension CGEvent {
         guard actualLength > 0 else { return nil }
 
         return String(utf16CodeUnits: buffer, count: actualLength)
-    }
-}
-
-private extension NSEvent {
-    var timestampDate: Date {
-        Date(timeIntervalSinceReferenceDate: timestamp)
     }
 }

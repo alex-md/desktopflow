@@ -3,7 +3,7 @@ import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { FlowRunReport, FlowStep, PermissionSnapshot, RecorderEvent, RecorderStatus, TargetHint, WindowDescriptor } from "../shared/models";
+import type { Flow, FlowRunReport, FlowStep, PermissionSnapshot, RecorderEvent, RecorderStatus, TargetHint, WindowDescriptor } from "../shared/models";
 
 const execFileAsync = promisify(execFile);
 const workspaceRoot = path.resolve(process.cwd());
@@ -160,13 +160,13 @@ export const getNativeRecorderStatus = (): RecorderStatus => {
   };
 };
 
-export const runNativeFlow = async (workspaceDataRoot: string, flowID: string): Promise<FlowRunReport> => {
+export const runNativeFlow = async (workspaceDataRoot: string, flow: Flow): Promise<FlowRunReport> => {
   if (runState) {
     throw new Error("A native flow run is already in progress.");
   }
 
   const binary = await ensureBridgePath();
-  const child = spawn(binary, ["run-flow", workspaceDataRoot, flowID], {
+  const child = spawn(binary, ["run-flow-json", workspaceDataRoot, JSON.stringify(flow)], {
     cwd: bridgeWorkingDirectory(),
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -174,7 +174,7 @@ export const runNativeFlow = async (workspaceDataRoot: string, flowID: string): 
   const startedAt = new Date().toISOString();
   runState = {
     child,
-    flowID,
+    flowID: flow.id,
     startedAt,
     aborted: false
   };
@@ -204,7 +204,7 @@ export const runNativeFlow = async (workspaceDataRoot: string, flowID: string): 
 
       if (current?.aborted) {
         resolve({
-          flowID,
+          flowID: flow.id,
           startedAt,
           finishedAt: new Date().toISOString(),
           status: "aborted",

@@ -8,6 +8,7 @@ struct DesktopflowChecks {
             try coordinateMappingCheck()
             try flowSerializationCheck()
             try recorderPipelineCheck()
+            try recorderDefaultWaitSensitivityCheck()
             try await runnerCheck()
             print("DesktopflowChecks: all checks passed.")
         } catch {
@@ -86,6 +87,39 @@ struct DesktopflowChecks {
         try expect(third.first?.type == .wait, "Short click pauses should become wait steps.")
         try expect(third.first?.params.durationMs == 400, "Short click waits should preserve the observed pause.")
         try expect(third.last?.type == .clickAt, "The click after a short pause should still be recorded.")
+    }
+
+    private static func recorderDefaultWaitSensitivityCheck() throws {
+        let window = BoundWindow(
+            descriptor: WindowDescriptor(bundleID: "com.example.Target", appName: "Target", title: "Arena"),
+            geometry: WindowGeometry(
+                frameRect: ScreenRect(x: 100, y: 100, width: 1024, height: 768),
+                contentRect: ScreenRect(x: 120, y: 140, width: 900, height: 620)
+            )
+        )
+
+        var pipeline = RecorderSemanticPipeline(targetHint: TargetHint(bundleID: "com.example.Target"))
+        let start: TimeInterval = 20_000
+
+        _ = pipeline.consume(
+            RecordedLowLevelEvent(
+                timestamp: start,
+                kind: .mouseDown(button: .left, location: ScreenPoint(x: 570, y: 450))
+            ),
+            in: window
+        )
+        let second = pipeline.consume(
+            RecordedLowLevelEvent(
+                timestamp: start + 0.2,
+                kind: .mouseDown(button: .left, location: ScreenPoint(x: 600, y: 470))
+            ),
+            in: window
+        )
+
+        try expect(second.count == 2, "Default recorder settings should capture brief human pauses between clicks.")
+        try expect(second.first?.type == .wait, "Default recorder settings should emit a wait step for brief pauses.")
+        try expect(second.first?.params.durationMs == 200, "Default recorder waits should preserve the observed pause length.")
+        try expect(second.last?.type == .clickAt, "The delayed click should still be recorded after the wait step.")
     }
 
     private static func runnerCheck() async throws {
