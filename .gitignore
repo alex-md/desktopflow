@@ -13,8 +13,15 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
+# Packaging resources
+/build/*
+!/build/entitlements.mac.plist
+!/build/notarize.cjs
+!/build/icon.svg
+!/build/icon.png
+!/build/icon.icns
+
 # Xcode
-build/
 DerivedData/
 *.xcodeproj/
 *.xcworkspace/

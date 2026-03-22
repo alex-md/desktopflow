@@ -2,7 +2,12 @@
   "name": "desktopflow",
   "version": "0.1.0",
   "description": "Electron port of the Desktopflow automation workspace.",
+  "author": "Alex Johnson",
   "main": "out/main/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alex-md/desktopflow.git"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -10,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "build:bridge": "swift build -c release --product DesktopflowBridge",
     "dist:mac": "npm run build && npm run build:bridge && electron-builder --mac dmg",
+    "dist:mac:x64": "npm run build && npm run build:bridge && electron-builder --mac dmg --x64",
     "dist:dir": "npm run build && npm run build:bridge && electron-builder --dir"
   },
   "dependencies": {
@@ -54,6 +60,7 @@
       "target": [
         "dmg"
       ],
+      "icon": "build/icon.icns",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -61,6 +68,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
+      "icon": "build/icon.icns",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "afterSign": "build/notarize.cjs"
