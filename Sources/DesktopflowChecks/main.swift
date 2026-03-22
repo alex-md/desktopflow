@@ -10,6 +10,7 @@ struct DesktopflowChecks {
             try recorderPipelineCheck()
             try recorderDefaultWaitSensitivityCheck()
             try await runnerCheck()
+            try await runnerConditionPollingCheck()
             print("DesktopflowChecks: all checks passed.")
         } catch {
             fputs("DesktopflowChecks failed: \(error.localizedDescription)\n", stderr)
@@ -151,6 +152,52 @@ struct DesktopflowChecks {
 
         try expect(report.status == .succeeded, "Runner should complete the sample flow.")
         try expect(report.stepResults.count == 6, "Runner should record each step result.")
+    }
+
+    private static func runnerConditionPollingCheck() async throws {
+        let window = BoundWindow(
+            descriptor: WindowDescriptor(appName: "Practice", title: "Arena"),
+            geometry: WindowGeometry(
+                frameRect: ScreenRect(x: 200, y: 100, width: 900, height: 700),
+                contentRect: ScreenRect(x: 220, y: 140, width: 860, height: 620)
+            )
+        )
+
+        var clickWithPostcondition = FlowStep.clickAt(ordinal: 1, point: NormalizedPoint(x: 0.5, y: 0.5))
+        clickWithPostcondition.postconditions = [StepCondition(anchorID: SampleData.inventoryAnchor.id, expectedVisible: true)]
+        clickWithPostcondition.timeoutMs = 1_000
+        clickWithPostcondition.params.pollIntervalMs = 10
+
+        let flow = Flow(
+            name: "Condition Polling",
+            description: "Verify that postconditions poll until matched.",
+            targetHint: TargetHint(appName: "Practice", windowTitleContains: "Arena"),
+            defaultTimeoutMs: 1_000,
+            steps: [
+                .attachWindow(ordinal: 0),
+                clickWithPostcondition
+            ]
+        )
+
+        let runner = FlowRunner(
+            windowBinder: CheckWindowBinder(window: window),
+            frameProvider: CheckFrameProvider(),
+            matcher: CheckTemplateMatcher(successOnAttempt: 3),
+            inputDispatcher: CheckInputDispatcher(),
+            diagnostics: NullDiagnosticsSink(),
+            sleeper: CheckSleeper()
+        )
+
+        let report = await runner.run(
+            FlowRunRequest(
+                flow: flow,
+                anchorsByID: [SampleData.inventoryAnchor.id: SampleData.inventoryAnchor]
+            ),
+            control: RunControl()
+        )
+
+        try expect(report.status == .succeeded, "Runner should poll postconditions until they match.")
+        try expect(report.stepResults.count == 2, "Runner should preserve both step results when polling conditions.")
     }
 
     private static func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {

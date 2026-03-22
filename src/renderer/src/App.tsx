@@ -13,10 +13,9 @@ import type {
 } from "../../shared/models";
 import { mouseButtons, stepTypes } from "../../shared/models";
 
-type AppSection = "overview" | "recorder" | "editor" | "runner" | "permissions";
+type AppSection = "recorder" | "editor" | "runner" | "permissions";
 
 const sections: Array<{ id: AppSection; label: string; eyebrow: string }> = [
-  { id: "overview", label: "Overview", eyebrow: "Workspace" },
   { id: "recorder", label: "Recorder", eyebrow: "Capture" },
   { id: "editor", label: "Flow Editor", eyebrow: "Authoring" },
   { id: "runner", label: "Runner", eyebrow: "Playback" },
@@ -190,32 +189,76 @@ const stepDetail = (step: FlowStep, anchors: Anchor[]) => {
   return stepSummary(step, anchors);
 };
 
+const stepPaletteSummary = (type: StepType) => {
+  switch (type) {
+    case "attachWindow":
+      return "Match the target application window.";
+    case "focusWindow":
+      return "Bring the matched window forward.";
+    case "wait":
+      return "Pause for a fixed duration.";
+    case "waitForAnchor":
+      return "Pause until an anchor appears.";
+    case "clickAt":
+      return "Click a normalized position.";
+    case "pressKey":
+      return "Send a keyboard shortcut or key.";
+    case "checkpointScreenshot":
+      return "Capture a debug screenshot checkpoint.";
+    default:
+      return formatStepType(type);
+  }
+};
+
+const formatStepType = (type: StepType) =>
+  type
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/^./, (value) => value.toUpperCase());
+
 const PreviewSurface = ({ flow }: { flow: Flow }) => (
   <div className="preview-surface">
-    <div className="preview-screen">
-      {flow.steps
-        .filter((step) => step.type === "clickAt" && step.params.point)
-        .map((step) => (
-          <span
-            className="preview-dot"
-            key={step.id}
-            style={{
-              left: `${(step.params.point?.x ?? 0) * 100}%`,
-              top: `${(step.params.point?.y ?? 0) * 100}%`
-            }}
-          />
-        ))}
+    <div className="preview-window">
+      <div className="preview-toolbar">
+        <span>{flow.targetHint.appName ?? flow.name}</span>
+      </div>
+      <div className="preview-screen">
+        {flow.steps
+          .filter((step) => step.type === "clickAt" && step.params.point)
+          .map((step) => (
+            <span
+              className="preview-dot"
+              key={step.id}
+              style={{
+                left: `${(step.params.point?.x ?? 0) * 100}%`,
+                top: `${(step.params.point?.y ?? 0) * 100}%`
+              }}
+            />
+          ))}
+      </div>
     </div>
   </div>
 );
 
-const Header = ({ title, subtitle }: { title: string; subtitle: string }) => (
+const Header = ({
+  eyebrow,
+  title,
+  subtitle,
+  meta
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  meta?: string;
+}) => (
   <header className="section-header">
-    <p>{title}</p>
-    <div>
-      <h1>{title}</h1>
-      <span>{subtitle}</span>
+    <div className="section-header-copy">
+      <p>{eyebrow}</p>
+      <div>
+        <h1>{title}</h1>
+        <span>{subtitle}</span>
+      </div>
     </div>
+    {meta ? <div className="section-meta">{meta}</div> : null}
   </header>
 );
 
@@ -238,7 +281,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspacePayload>(emptyWorkspace);
-  const [selectedSection, setSelectedSection] = useState<AppSection>("overview");
+  const [selectedSection, setSelectedSection] = useState<AppSection>("recorder");
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
   const [selectedEditorStepId, setSelectedEditorStepId] = useState<string | null>(null);
   const [editorDraft, setEditorDraft] = useState<Flow | null>(null);
@@ -256,6 +299,11 @@ export default function App() {
   const [runnerStatus, setRunnerStatus] = useState("Idle");
   const [lastRunReport, setLastRunReport] = useState<FlowRunReport | null>(null);
   const [permissions, setPermissions] = useState<PermissionSnapshot>(emptyPermissions);
+  const grantedPermissionCount =
+    Number(permissions.accessibility) +
+    Number(permissions.inputMonitoring) +
+    Number(permissions.screenRecording);
+  const allPermissionsGranted = grantedPermissionCount === 3;
 
   const selectedFlow = useMemo(
     () => workspace.flows.find((flow) => flow.id === selectedFlowId) ?? workspace.flows[0] ?? null,
@@ -381,6 +429,14 @@ export default function App() {
   }, []);
 
   const selectFlow = (flowId: string | null) => {
+    if (flowId === selectedFlowId) {
+      return;
+    }
+
+    if (!confirmReplaceEditorDraft()) {
+      return;
+    }
+
     setSelectedFlowId(flowId);
     const flow = workspace.flows.find((item) => item.id === flowId) ?? null;
     hydrateEditor(flow);
@@ -406,18 +462,25 @@ export default function App() {
       return;
     }
 
-    const flowToSave: Flow = {
-      ...editorDraft,
-      updatedAt: new Date().toISOString(),
-      version: (editorSnapshot?.version ?? editorDraft.version) + 1,
-      steps: renumberSteps(editorDraft.steps)
-    };
+    try {
+      const flowToSave: Flow = {
+        ...editorDraft,
+        updatedAt: new Date().toISOString(),
+        version: (editorSnapshot?.version ?? editorDraft.version) + 1,
+        steps: renumberSteps(editorDraft.steps)
+      };
 
-    const payload = await window.desktopflow.saveFlow(flowToSave);
-    setWorkspace(payload);
-    setSelectedFlowId(flowToSave.id);
-    hydrateEditor(flowToSave);
-    setEditorStatus(`Saved '${flowToSave.name}'.`);
+      const payload = await window.desktopflow.saveFlow(flowToSave);
+      setWorkspace(payload);
+      setSelectedFlowId(flowToSave.id);
+      hydrateEditor(flowToSave);
+      setLastError(null);
+      setEditorStatus(`Saved '${flowToSave.name}'.`);
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to save the current flow.");
+      setLastError(message);
+      setEditorStatus(message);
+    }
   };
 
   const deleteSelectedFlow = async () => {
@@ -425,21 +488,43 @@ export default function App() {
       return;
     }
 
-    const payload = await window.desktopflow.deleteFlow(selectedFlow.id);
-    setWorkspace(payload);
-    const nextFlow = payload.flows[0] ?? null;
-    setSelectedFlowId(nextFlow?.id ?? null);
-    hydrateEditor(nextFlow);
-    setEditorStatus(nextFlow ? `Editing '${nextFlow.name}'.` : "Create or select a flow to edit.");
+    if (!window.confirm(`Delete '${selectedFlow.name}'?`)) {
+      return;
+    }
+
+    try {
+      const payload = await window.desktopflow.deleteFlow(selectedFlow.id);
+      setWorkspace(payload);
+      const nextFlow = payload.flows[0] ?? null;
+      setSelectedFlowId(nextFlow?.id ?? null);
+      hydrateEditor(nextFlow);
+      setLastError(null);
+      setEditorStatus(nextFlow ? `Editing '${nextFlow.name}'.` : "Create or select a flow to edit.");
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to delete the selected flow.");
+      setLastError(message);
+      setEditorStatus(message);
+    }
   };
 
   const refreshWindows = async () => {
-    const payload = await window.desktopflow.loadWorkspace();
-    setWorkspace(payload);
-    setSelectedWindowId((current) =>
-      current && payload.windows.some((window) => window.id === current) ? current : payload.windows[0]?.id ?? null
-    );
-    setRecorderStatus(`Loaded ${payload.windows.length} configured target window${payload.windows.length === 1 ? "" : "s"}.`);
+    try {
+      const payload = await window.desktopflow.loadWorkspace();
+      setWorkspace(payload);
+      setSelectedWindowId((current) =>
+        current && payload.windows.some((window) => window.id === current) ? current : payload.windows[0]?.id ?? null
+      );
+      setLastError(null);
+      setRecorderStatus(
+        payload.windows.length > 0
+          ? `Loaded ${payload.windows.length} configured target window${payload.windows.length === 1 ? "" : "s"}.`
+          : "No configured target windows were found."
+      );
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to refresh target windows.");
+      setLastError(message);
+      setRecorderStatus(message);
+    }
   };
 
   const startRecording = async () => {
@@ -531,14 +616,21 @@ export default function App() {
       ])
     };
 
-    const payload = await window.desktopflow.saveFlow(flow);
-    setWorkspace(payload);
-    setSelectedFlowId(flow.id);
-    hydrateEditor(flow);
-    setRecordedSteps([]);
-    setIsRecording(false);
-    setSelectedSection("editor");
-    setRecorderStatus(`Saved ${flow.steps.length - 2} recorded steps to '${flow.name}'.`);
+    try {
+      const payload = await window.desktopflow.saveFlow(flow);
+      setWorkspace(payload);
+      setSelectedFlowId(flow.id);
+      hydrateEditor(flow);
+      setRecordedSteps([]);
+      setIsRecording(false);
+      setSelectedSection("editor");
+      setLastError(null);
+      setRecorderStatus(`Saved ${flow.steps.length - 2} recorded steps to '${flow.name}'.`);
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to save the recorded flow.");
+      setLastError(message);
+      setRecorderStatus(message);
+    }
   };
 
   const runSelectedFlow = async () => {
@@ -567,8 +659,15 @@ export default function App() {
       return;
     }
 
-    const aborted = await window.desktopflow.abortFlow(selectedFlow.id);
-    setRunnerStatus(aborted ? "Abort requested." : "No active native run to abort.");
+    try {
+      const aborted = await window.desktopflow.abortFlow(selectedFlow.id);
+      setLastError(null);
+      setRunnerStatus(aborted ? "Abort requested." : "No active native run to abort.");
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to abort the current run.");
+      setLastError(message);
+      setRunnerStatus(message);
+    }
   };
 
   const toggleModifier = (modifier: string) => {
@@ -665,17 +764,52 @@ export default function App() {
   };
 
   const selectedFlowStepIds = new Set(selectedFlow?.steps.map((step) => step.id));
+  const activeSection = sections.find((section) => section.id === selectedSection) ?? sections[0];
+  const enabledEditorStepCount = editorDraft?.steps.filter((step) => step.enabled).length ?? 0;
+  const selectedEditorStepOrdinal = selectedEditorStep ? selectedEditorStep.ordinal + 1 : null;
+  const draftExistsInWorkspace = editorDraft ? workspace.flows.some((flow) => flow.id === editorDraft.id) : false;
+  const hasUnsavedEditorWork = Boolean(editorDraft) && (!draftExistsInWorkspace || editorIsDirty);
+  const canSaveEditorDraft = Boolean(editorDraft) && hasUnsavedEditorWork;
+  const runnerCompletion = lastRunReport
+    ? `${lastRunReport.stepResults.filter((result) => result.status === "succeeded").length}/${lastRunReport.stepResults.length} complete`
+    : "No recent run";
+  const workspaceSummary = `${workspace.flows.length} flows • ${workspace.windows.length} targets`;
+  const activeFlowSummary = lastError ? lastError : selectedFlow ? `${selectedFlow.name} is currently in focus.` : "Select or create a flow to begin.";
+
+  const confirmReplaceEditorDraft = () => {
+    if (!hasUnsavedEditorWork) {
+      return true;
+    }
+
+    return window.confirm("Discard the current editor changes?");
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (selectedSection !== "editor" || !canSaveEditorDraft) {
+        return;
+      }
+
+      if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "s") {
+        return;
+      }
+
+      event.preventDefault();
+      void saveEditorDraft();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedSection, canSaveEditorDraft, editorDraft, editorSnapshot, workspace.flows]);
 
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand">
-          <span>Desktopflow</span>
-          <strong>Electron Port</strong>
-        </div>
-
-        <nav className="nav-card">
-          <span className="nav-label">Workspace</span>
+        <nav className="nav-card sidebar-card">
+          <div className="card-heading">
+            <span className="nav-label">Navigate</span>
+            <strong>{activeSection.eyebrow}</strong>
+          </div>
           {sections.map((section) => (
             <button
               className={selectedSection === section.id ? "nav-item active" : "nav-item"}
@@ -689,108 +823,74 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="flow-card">
+        <div className="flow-card sidebar-card">
           <div className="flow-card-header">
-            <span>Flows</span>
-            <strong>{workspace.flows.length}</strong>
+            <div className="card-heading">
+              <span>Flows</span>
+              <p>{workspaceSummary}</p>
+            </div>
+            <button
+              className="ghost small"
+              onClick={() => {
+                if (!confirmReplaceEditorDraft()) {
+                  return;
+                }
+
+                const flow = createFlow();
+                setSelectedFlowId(flow.id);
+                setSelectedSection("editor");
+                hydrateEditor(flow);
+              }}
+              type="button"
+            >
+              New
+            </button>
           </div>
           <div className="flow-list">
-            {workspace.flows.map((flow) => (
-              <button
-                className={selectedFlow?.id === flow.id ? "flow-item active" : "flow-item"}
-                key={flow.id}
-                onClick={() => selectFlow(flow.id)}
-                type="button"
-              >
-                <strong>{flow.name}</strong>
-                <span>{flow.description}</span>
-              </button>
-            ))}
+            {workspace.flows.length === 0 ? (
+              <div className="empty-note">
+                <strong>No flows yet</strong>
+                <span>Create a draft to start building the workspace.</span>
+              </div>
+            ) : (
+              workspace.flows.map((flow) => (
+                <button
+                  className={selectedFlow?.id === flow.id ? "flow-item active" : "flow-item"}
+                  key={flow.id}
+                  onClick={() => selectFlow(flow.id)}
+                  type="button"
+                >
+                  <strong>{flow.name}</strong>
+                  <span>{flow.description}</span>
+                  <small>{flow.steps.length} steps</small>
+                </button>
+              ))
+            )}
           </div>
         </div>
       </aside>
 
       <main className="content">
         <div className="topbar">
-          <div>
-            <p>Workspace Root</p>
-            <strong>{workspace.workspaceRoot || "Loading..."}</strong>
-          </div>
-          <div className="status-pill">
-            <span>{lastError ? "Issue" : isLoading ? "Loading" : "Ready"}</span>
-            <strong>{lastError ?? "Electron shell is active"}</strong>
+          <div className="topbar-main">
+            <div className="topbar-copy">
+              <span>{activeSection.eyebrow}</span>
+              <strong>{activeSection.label}</strong>
+              <p>{activeFlowSummary}</p>
+            </div>
           </div>
         </div>
 
-        {selectedSection === "overview" && (
-          <section className="page">
-            <Header
-              title="Overview"
-              subtitle="JSON-backed flow inventory, selected flow summary, and the current runner state."
-            />
-
-            <div className="stats-grid">
-              <article className="stat-card">
-                <span>Flows</span>
-                <strong>{workspace.flows.length}</strong>
-              </article>
-              <article className="stat-card">
-                <span>Anchors</span>
-                <strong>{workspace.anchors.length}</strong>
-              </article>
-              <article className="stat-card">
-                <span>Runner</span>
-                <strong>{lastRunReport?.status ?? "idle"}</strong>
-              </article>
-            </div>
-
-            <div className="panel-grid">
-              <article className="panel">
-                <div className="panel-header">
-                  <div>
-                    <p>Selected Flow</p>
-                    <h2>{selectedFlow?.name ?? "No flow selected"}</h2>
-                  </div>
-                  {selectedFlow ? <span className="badge">{selectedFlow.steps.length} steps</span> : null}
-                </div>
-
-                {selectedFlow ? (
-                  <>
-                    <p className="muted">{selectedFlow.description}</p>
-                    <div className="key-grid">
-                      <KeyValue label="Default Timeout" value={`${selectedFlow.defaultTimeoutMs} ms`} />
-                      <KeyValue label="Bundle ID" value={selectedFlow.targetHint.bundleID ?? "Unset"} />
-                      <KeyValue label="Updated" value={fmtDate(selectedFlow.updatedAt)} />
-                    </div>
-                    <PreviewSurface flow={selectedFlow} />
-                  </>
-                ) : (
-                  <p className="muted">Select a flow from the sidebar.</p>
-                )}
-              </article>
-
-              <article className="panel notice-panel">
-                <div className="panel-header">
-                  <div>
-                    <p>Port Notes</p>
-                    <h2>What moved over</h2>
-                  </div>
-                </div>
-                <ul className="plain-list">
-                  <li>The app now runs in Electron with React and TypeScript.</li>
-                  <li>Existing `WorkspaceData/flows` and `WorkspaceData/anchors` JSON files load directly.</li>
-                  <li>The Electron shell now calls a Swift bridge for window discovery, live recording, permissions, and native playback.</li>
-                </ul>
-              </article>
-            </div>
-          </section>
-        )}
-
         {selectedSection === "recorder" && (
           <section className="page">
-            <Header title="Recorder" subtitle="Capture real clicks and keys from the selected macOS window through the Swift bridge." />
+            <Header
+              eyebrow="Capture"
+              title="Recorder"
+              subtitle="Capture real clicks and keys from the selected macOS window through the Swift bridge."
+              meta={`${recordedSteps.length} captured steps`}
+            />
 
-            <div className="panel-grid two-up">
+            <div className="panel-grid single">
               <article className="panel">
                 <div className="panel-header">
                   <div>
@@ -801,14 +901,19 @@ export default function App() {
 
                 <label className="field">
                   <span>Target Window</span>
-                  <select value={selectedWindowId ?? ""} onChange={(event) => setSelectedWindowId(event.target.value)}>
-                    {workspace.windows.map((window) => (
-                      <option key={window.id} value={window.id}>
-                        {window.appName} · {window.title}
-                      </option>
-                    ))}
+                  <select disabled={workspace.windows.length === 0} value={selectedWindowId ?? ""} onChange={(event) => setSelectedWindowId(event.target.value)}>
+                    {workspace.windows.length === 0 ? (
+                      <option value="">No target windows available</option>
+                    ) : (
+                      workspace.windows.map((window) => (
+                        <option key={window.id} value={window.id}>
+                          {window.appName} · {window.title}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </label>
+                {workspace.windows.length === 0 ? <p className="muted">Refresh targets after adding or exposing a window the bridge can resolve.</p> : null}
 
                 <label className="field">
                   <span>Saved Flow Name</span>
@@ -836,24 +941,6 @@ export default function App() {
                   <KeyValue label="Captured Steps" value={`${recordedSteps.length}`} />
                 </div>
               </article>
-
-              <article className="panel">
-                <div className="panel-header">
-                  <div>
-                    <p>Live Capture</p>
-                    <h2>Native Recorder</h2>
-                  </div>
-                  <span className="badge">Swift bridge</span>
-                </div>
-                <p className="muted">
-                  Recording now uses the original macOS event-monitoring approach from Swift. Input Monitoring is typically required for key capture, and clicks are only recorded when they land inside the selected window.
-                </p>
-                <div className="status-stack">
-                  <KeyValue label="Accessibility" value={permissionLabel(permissions.accessibility)} />
-                  <KeyValue label="Input Monitoring" value={permissionLabel(permissions.inputMonitoring)} />
-                  <KeyValue label="Screen Recording" value={permissionLabel(permissions.screenRecording)} />
-                </div>
-              </article>
             </div>
 
             <article className="panel">
@@ -871,7 +958,7 @@ export default function App() {
                   {recordedSteps.map((step) => (
                     <div className="step-card" key={step.id}>
                       <div>
-                        <strong>{step.type}</strong>
+                        <strong>{formatStepType(step.type)}</strong>
                         <span>{stepDetail(step, workspace.anchors)}</span>
                       </div>
                       <small>Step {step.ordinal + 1}</small>
@@ -885,13 +972,32 @@ export default function App() {
 
         {selectedSection === "editor" && (
           <section className="page">
-            <Header title="Flow Editor" subtitle="Adjust targeting, timing, and action parameters without touching the raw JSON files." />
+            <Header
+              eyebrow="Authoring"
+              title="Flow Editor"
+              subtitle="Adjust targeting, timing, and action parameters without touching the raw JSON files."
+              meta={editorDraft ? `${enabledEditorStepCount}/${editorDraft.steps.length} active steps` : "Draft not selected"}
+            />
 
             <div className="editor-toolbar">
+              <div className="editor-toolbar-copy">
+                <strong>{editorDraft?.name ?? "No flow selected"}</strong>
+                <span>{editorStatus}</span>
+              </div>
+              <div className="editor-toolbar-meta">
+                <span className="badge">{editorDraft?.steps.length ?? 0} steps</span>
+                <span className={hasUnsavedEditorWork ? "toolbar-status dirty" : "toolbar-status"}>
+                  {hasUnsavedEditorWork ? "Unsaved changes" : "All changes saved"}
+                </span>
+              </div>
               <div className="button-row">
                 <button
                   className="ghost"
                   onClick={() => {
+                    if (!confirmReplaceEditorDraft()) {
+                      return;
+                    }
+
                     const flow = createFlow();
                     setSelectedFlowId(flow.id);
                     hydrateEditor(flow);
@@ -905,6 +1011,10 @@ export default function App() {
                   disabled={!selectedFlow}
                   onClick={() => {
                     if (!selectedFlow) {
+                      return;
+                    }
+
+                    if (!confirmReplaceEditorDraft()) {
                       return;
                     }
 
@@ -925,27 +1035,27 @@ export default function App() {
                 <button className="ghost" disabled={!editorDraft || !editorIsDirty} onClick={() => hydrateEditor(selectedFlow)} type="button">
                   Revert
                 </button>
-                <button className="primary" disabled={!editorDraft} onClick={() => void saveEditorDraft()} type="button">
+                <button className="primary" disabled={!canSaveEditorDraft} onClick={() => void saveEditorDraft()} type="button">
                   Save
                 </button>
                 <button className="danger" disabled={!editorDraft || !selectedFlowStepIds.size} onClick={() => void deleteSelectedFlow()} type="button">
                   Delete
                 </button>
               </div>
-              <span className={editorIsDirty ? "toolbar-status dirty" : "toolbar-status"}>{editorStatus}</span>
             </div>
 
             {editorDraft ? (
               <div className="editor-layout">
-                <article className="panel">
+                <article className="panel editor-sidebar-panel">
                   <div className="panel-header">
                     <div>
                       <p>Flow</p>
                       <h2>Metadata</h2>
                     </div>
+                    <span className="badge muted-badge">v{editorDraft.version}</span>
                   </div>
 
-                  <div className="field-grid">
+                  <div className="panel-section">
                     <label className="field">
                       <span>Flow Name</span>
                       <input
@@ -983,6 +1093,16 @@ export default function App() {
                         }
                       />
                     </label>
+                  </div>
+
+                  <div className="panel-header compact">
+                    <div>
+                      <p>Targeting</p>
+                      <h2>Window Hints</h2>
+                    </div>
+                  </div>
+
+                  <div className="panel-section">
                     <label className="field">
                       <span>Bundle ID</span>
                       <input
@@ -1023,31 +1143,75 @@ export default function App() {
 
                   <div className="panel-header compact">
                     <div>
-                      <p>Actions</p>
-                      <h2>Step List</h2>
-                    </div>
-                    <div className="button-row compact">
-                      {stepTypes.map((type) => (
-                        <button className="ghost small" key={type} onClick={() => addAction(type)} type="button">
-                          + {type}
-                        </button>
-                      ))}
+                      <p>Summary</p>
+                      <h2>Draft Health</h2>
                     </div>
                   </div>
 
-                  <div className="step-list">
+                  <div className="status-stack">
+                    <KeyValue label="Created" value={fmtDate(editorDraft.createdAt)} />
+                    <KeyValue label="Updated" value={fmtDate(editorDraft.updatedAt)} />
+                    <KeyValue label="Enabled Steps" value={`${enabledEditorStepCount}`} />
+                  </div>
+
+                  <div className="panel-header compact">
+                    <div>
+                      <p>Preview</p>
+                      <h2>Click Map</h2>
+                    </div>
+                  </div>
+
+                  <PreviewSurface flow={editorDraft} />
+                </article>
+
+                <article className="panel editor-sequence-panel">
+                  <div className="panel-header">
+                    <div>
+                      <p>Sequence</p>
+                      <h2>Step Timeline</h2>
+                    </div>
+                    <span className="badge">{editorDraft.steps.length} total</span>
+                  </div>
+
+                  <div className="key-grid compact-grid">
+                    <KeyValue label="Active" value={`${enabledEditorStepCount}`} />
+                    <KeyValue label="Anchors" value={`${workspace.anchors.length}`} />
+                    <KeyValue label="Timeout" value={`${editorDraft.defaultTimeoutMs} ms`} />
+                  </div>
+
+                  <div className="panel-header compact">
+                    <div>
+                      <p>Add Step</p>
+                      <h2>Common Actions</h2>
+                    </div>
+                  </div>
+
+                  <div className="step-type-grid">
+                    {stepTypes.map((type) => (
+                      <button className="ghost small add-step-button" key={type} onClick={() => addAction(type)} type="button">
+                        <strong>{formatStepType(type)}</strong>
+                        <span>{stepPaletteSummary(type)}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="step-list editor-step-list">
                     {editorDraft.steps.map((step) => (
                       <button
-                        className={selectedEditorStep?.id === step.id ? "step-card active" : "step-card"}
+                        className={selectedEditorStep?.id === step.id ? "step-card active timeline-step" : "step-card timeline-step"}
                         key={step.id}
                         onClick={() => setSelectedEditorStepId(step.id)}
                         type="button"
                       >
-                        <div>
-                          <strong>{step.type}</strong>
+                        <div className="step-index">{step.ordinal + 1}</div>
+                        <div className="step-copy">
+                          <div className="step-title-row">
+                            <strong>{formatStepType(step.type)}</strong>
+                            {!step.enabled ? <span className="inline-badge">Disabled</span> : null}
+                            {step.timeoutMs ? <span className="inline-badge">{step.timeoutMs} ms</span> : null}
+                          </div>
                           <span>{stepDetail(step, workspace.anchors)}</span>
                         </div>
-                        <small>Step {step.ordinal + 1}</small>
                       </button>
                     ))}
                   </div>
@@ -1057,84 +1221,87 @@ export default function App() {
                   <div className="panel-header">
                     <div>
                       <p>Inspector</p>
-                      <h2>{selectedEditorStep?.type ?? "Select a step"}</h2>
+                      <h2>{selectedEditorStep ? formatStepType(selectedEditorStep.type) : "Select a step"}</h2>
                     </div>
+                    {selectedEditorStepOrdinal ? <span className="badge muted-badge">Step {selectedEditorStepOrdinal}</span> : null}
                   </div>
 
                   {selectedEditorStep ? (
                     <>
-                      <div className="field-grid">
-                        <label className="field">
-                          <span>Type</span>
-                          <select value={selectedEditorStep.type} onChange={(event) => replaceSelectedStepType(event.target.value as StepType)}>
-                            {stepTypes.map((type) => (
-                              <option key={type} value={type}>
-                                {type}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="field checkbox-field">
-                          <span>Enabled</span>
-                          <input
-                            checked={selectedEditorStep.enabled}
-                            onChange={(event) => upsertSelectedStep((step) => void (step.enabled = event.target.checked))}
-                            type="checkbox"
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Timeout Override</span>
-                          <input
-                            type="number"
-                            value={selectedEditorStep.timeoutMs ?? ""}
-                            onChange={(event) =>
-                              upsertSelectedStep((step) => {
-                                step.timeoutMs = event.target.value === "" ? undefined : Math.max(0, Number(event.target.value) || 0);
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Retry Attempts</span>
-                          <input
-                            type="number"
-                            value={selectedEditorStep.retryPolicy?.maxAttempts ?? 1}
-                            onChange={(event) =>
-                              upsertSelectedStep((step) => {
-                                step.retryPolicy = {
-                                  maxAttempts: Math.max(1, Number(event.target.value) || 1),
-                                  backoffMs: step.retryPolicy?.backoffMs ?? 0
-                                };
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Retry Backoff</span>
-                          <input
-                            type="number"
-                            value={selectedEditorStep.retryPolicy?.backoffMs ?? 0}
-                            onChange={(event) =>
-                              upsertSelectedStep((step) => {
-                                step.retryPolicy = {
-                                  maxAttempts: step.retryPolicy?.maxAttempts ?? 1,
-                                  backoffMs: Math.max(0, Number(event.target.value) || 0)
-                                };
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Debug Note</span>
-                          <input
-                            value={selectedEditorStep.debugNote ?? ""}
-                            onChange={(event) =>
-                              upsertSelectedStep((step) => {
-                                step.debugNote = normalizeOptional(event.target.value);
-                              })
-                            }
-                          />
-                        </label>
+                      <div className="panel-section">
+                        <div className="field-grid compact-fields">
+                          <label className="field">
+                            <span>Type</span>
+                            <select value={selectedEditorStep.type} onChange={(event) => replaceSelectedStepType(event.target.value as StepType)}>
+                              {stepTypes.map((type) => (
+                                <option key={type} value={type}>
+                                  {formatStepType(type)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="field checkbox-field">
+                            <span>Enabled</span>
+                            <input
+                              checked={selectedEditorStep.enabled}
+                              onChange={(event) => upsertSelectedStep((step) => void (step.enabled = event.target.checked))}
+                              type="checkbox"
+                            />
+                          </label>
+                          <label className="field">
+                            <span>Timeout Override</span>
+                            <input
+                              type="number"
+                              value={selectedEditorStep.timeoutMs ?? ""}
+                              onChange={(event) =>
+                                upsertSelectedStep((step) => {
+                                  step.timeoutMs = event.target.value === "" ? undefined : Math.max(0, Number(event.target.value) || 0);
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="field">
+                            <span>Retry Attempts</span>
+                            <input
+                              type="number"
+                              value={selectedEditorStep.retryPolicy?.maxAttempts ?? 1}
+                              onChange={(event) =>
+                                upsertSelectedStep((step) => {
+                                  step.retryPolicy = {
+                                    maxAttempts: Math.max(1, Number(event.target.value) || 1),
+                                    backoffMs: step.retryPolicy?.backoffMs ?? 0
+                                  };
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="field">
+                            <span>Retry Backoff</span>
+                            <input
+                              type="number"
+                              value={selectedEditorStep.retryPolicy?.backoffMs ?? 0}
+                              onChange={(event) =>
+                                upsertSelectedStep((step) => {
+                                  step.retryPolicy = {
+                                    maxAttempts: step.retryPolicy?.maxAttempts ?? 1,
+                                    backoffMs: Math.max(0, Number(event.target.value) || 0)
+                                  };
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="field">
+                            <span>Debug Note</span>
+                            <input
+                              value={selectedEditorStep.debugNote ?? ""}
+                              onChange={(event) =>
+                                upsertSelectedStep((step) => {
+                                  step.debugNote = normalizeOptional(event.target.value);
+                                })
+                              }
+                            />
+                          </label>
+                        </div>
                       </div>
 
                       <div className="panel-header compact">
@@ -1144,161 +1311,163 @@ export default function App() {
                         </div>
                       </div>
 
-                      {selectedEditorStep.type === "wait" && (
-                        <label className="field">
-                          <span>Duration (ms)</span>
-                          <input
-                            type="number"
-                            value={selectedEditorStep.params.durationMs ?? 500}
-                            onChange={(event) =>
-                              upsertSelectedStep((step) => {
-                                step.params.durationMs = Math.max(0, Number(event.target.value) || 0);
-                              })
-                            }
-                          />
-                        </label>
-                      )}
-
-                      {selectedEditorStep.type === "waitForAnchor" && (
-                        <div className="field-grid">
+                      <div className="panel-section">
+                        {selectedEditorStep.type === "wait" && (
                           <label className="field">
-                            <span>Anchor</span>
-                            <select
-                              value={selectedEditorStep.params.anchorID ?? ""}
-                              onChange={(event) =>
-                                upsertSelectedStep((step) => {
-                                  step.params.anchorID = normalizeOptional(event.target.value);
-                                })
-                              }
-                            >
-                              <option value="">None</option>
-                              {workspace.anchors.map((anchor) => (
-                                <option key={anchor.id} value={anchor.id}>
-                                  {anchor.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="field">
-                            <span>Poll Interval (ms)</span>
+                            <span>Duration (ms)</span>
                             <input
                               type="number"
-                              value={selectedEditorStep.params.pollIntervalMs ?? 120}
+                              value={selectedEditorStep.params.durationMs ?? 500}
                               onChange={(event) =>
                                 upsertSelectedStep((step) => {
-                                  step.params.pollIntervalMs = Math.max(1, Number(event.target.value) || 120);
+                                  step.params.durationMs = Math.max(0, Number(event.target.value) || 0);
                                 })
                               }
                             />
                           </label>
-                        </div>
-                      )}
+                        )}
 
-                      {selectedEditorStep.type === "clickAt" && (
-                        <div className="field-grid">
-                          <label className="field">
-                            <span>X</span>
-                            <input
-                              max="1"
-                              min="0"
-                              step="0.001"
-                              type="number"
-                              value={selectedEditorStep.params.point?.x ?? 0.5}
-                              onChange={(event) =>
-                                upsertSelectedStep((step) => {
-                                  step.params.point = {
-                                    x: Math.max(0, Math.min(1, Number(event.target.value) || 0)),
-                                    y: step.params.point?.y ?? 0.5
-                                  };
-                                })
-                              }
-                            />
-                          </label>
-                          <label className="field">
-                            <span>Y</span>
-                            <input
-                              max="1"
-                              min="0"
-                              step="0.001"
-                              type="number"
-                              value={selectedEditorStep.params.point?.y ?? 0.5}
-                              onChange={(event) =>
-                                upsertSelectedStep((step) => {
-                                  step.params.point = {
-                                    x: step.params.point?.x ?? 0.5,
-                                    y: Math.max(0, Math.min(1, Number(event.target.value) || 0))
-                                  };
-                                })
-                              }
-                            />
-                          </label>
-                          <label className="field">
-                            <span>Button</span>
-                            <select
-                              value={selectedEditorStep.params.button ?? "left"}
-                              onChange={(event) =>
-                                upsertSelectedStep((step) => {
-                                  step.params.button = event.target.value as MouseButton;
-                                })
-                              }
-                            >
-                              {mouseButtons.map((button) => (
-                                <option key={button} value={button}>
-                                  {button}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                      )}
-
-                      {selectedEditorStep.type === "pressKey" && (
-                        <div className="field-grid">
-                          <label className="field">
-                            <span>Key Code</span>
-                            <input
-                              value={selectedEditorStep.params.keyCode ?? ""}
-                              onChange={(event) =>
-                                upsertSelectedStep((step) => {
-                                  step.params.keyCode = event.target.value.trim().toUpperCase();
-                                })
-                              }
-                            />
-                          </label>
-                          <div className="modifier-row">
-                            {["command", "shift", "control", "option"].map((modifier) => (
-                              <button
-                                className={selectedEditorStep.params.modifiers.includes(modifier) ? "toggle active" : "toggle"}
-                                key={modifier}
-                                onClick={() => toggleModifier(modifier)}
-                                type="button"
+                        {selectedEditorStep.type === "waitForAnchor" && (
+                          <div className="field-grid compact-fields">
+                            <label className="field">
+                              <span>Anchor</span>
+                              <select
+                                value={selectedEditorStep.params.anchorID ?? ""}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.anchorID = normalizeOptional(event.target.value);
+                                  })
+                                }
                               >
-                                {modifier}
-                              </button>
-                            ))}
+                                <option value="">None</option>
+                                {workspace.anchors.map((anchor) => (
+                                  <option key={anchor.id} value={anchor.id}>
+                                    {anchor.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="field">
+                              <span>Poll Interval (ms)</span>
+                              <input
+                                type="number"
+                                value={selectedEditorStep.params.pollIntervalMs ?? 120}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.pollIntervalMs = Math.max(1, Number(event.target.value) || 120);
+                                  })
+                                }
+                              />
+                            </label>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {selectedEditorStep.type === "checkpointScreenshot" && (
-                        <label className="field">
-                          <span>Label</span>
-                          <input
-                            value={selectedEditorStep.params.label ?? ""}
-                            onChange={(event) =>
-                              upsertSelectedStep((step) => {
-                                step.params.label = normalizeOptional(event.target.value);
-                              })
-                            }
-                          />
-                        </label>
-                      )}
+                        {selectedEditorStep.type === "clickAt" && (
+                          <div className="field-grid compact-fields">
+                            <label className="field">
+                              <span>X</span>
+                              <input
+                                max="1"
+                                min="0"
+                                step="0.001"
+                                type="number"
+                                value={selectedEditorStep.params.point?.x ?? 0.5}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.point = {
+                                      x: Math.max(0, Math.min(1, Number(event.target.value) || 0)),
+                                      y: step.params.point?.y ?? 0.5
+                                    };
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Y</span>
+                              <input
+                                max="1"
+                                min="0"
+                                step="0.001"
+                                type="number"
+                                value={selectedEditorStep.params.point?.y ?? 0.5}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.point = {
+                                      x: step.params.point?.x ?? 0.5,
+                                      y: Math.max(0, Math.min(1, Number(event.target.value) || 0))
+                                    };
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Button</span>
+                              <select
+                                value={selectedEditorStep.params.button ?? "left"}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.button = event.target.value as MouseButton;
+                                  })
+                                }
+                              >
+                                {mouseButtons.map((button) => (
+                                  <option key={button} value={button}>
+                                    {button}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                        )}
 
-                      {(selectedEditorStep.type === "attachWindow" || selectedEditorStep.type === "focusWindow") && (
-                        <p className="muted">This action has no editable parameters.</p>
-                      )}
+                        {selectedEditorStep.type === "pressKey" && (
+                          <div className="field-grid compact-fields">
+                            <label className="field">
+                              <span>Key Code</span>
+                              <input
+                                value={selectedEditorStep.params.keyCode ?? ""}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.keyCode = event.target.value.trim().toUpperCase();
+                                  })
+                                }
+                              />
+                            </label>
+                            <div className="modifier-row">
+                              {["command", "shift", "control", "option"].map((modifier) => (
+                                <button
+                                  className={selectedEditorStep.params.modifiers.includes(modifier) ? "toggle active" : "toggle"}
+                                  key={modifier}
+                                  onClick={() => toggleModifier(modifier)}
+                                  type="button"
+                                >
+                                  {modifier}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
-                      <div className="button-row">
+                        {selectedEditorStep.type === "checkpointScreenshot" && (
+                          <label className="field">
+                            <span>Label</span>
+                            <input
+                              value={selectedEditorStep.params.label ?? ""}
+                              onChange={(event) =>
+                                upsertSelectedStep((step) => {
+                                  step.params.label = normalizeOptional(event.target.value);
+                                })
+                              }
+                            />
+                          </label>
+                        )}
+
+                        {(selectedEditorStep.type === "attachWindow" || selectedEditorStep.type === "focusWindow") && (
+                          <p className="muted">This action has no editable parameters.</p>
+                        )}
+                      </div>
+
+                      <div className="inspector-actions">
                         <button className="ghost" onClick={() => moveStep(selectedEditorStep.id, -1)} type="button">
                           Move Up
                         </button>
@@ -1314,7 +1483,7 @@ export default function App() {
                       </div>
                     </>
                   ) : (
-                    <p className="muted">Select a step from the list to inspect it.</p>
+                    <p className="muted">Select a step from the timeline to inspect it.</p>
                   )}
                 </article>
               </div>
@@ -1328,7 +1497,12 @@ export default function App() {
 
         {selectedSection === "runner" && (
           <section className="page">
-            <Header title="Runner" subtitle="Replay the selected flow and inspect step-level results from the Electron shell." />
+            <Header
+              eyebrow="Playback"
+              title="Runner"
+              subtitle="Replay the selected flow and inspect step-level results from the Electron shell."
+              meta={runnerCompletion}
+            />
 
             <div className="button-row">
               <button className="primary" disabled={!selectedFlow || isRunningFlow} onClick={() => void runSelectedFlow()} type="button">
@@ -1374,7 +1548,7 @@ export default function App() {
                     {selectedFlow.steps.map((step) => (
                       <div className="step-card" key={step.id}>
                         <div>
-                          <strong>{step.type}</strong>
+                          <strong>{formatStepType(step.type)}</strong>
                           <span>{stepDetail(step, workspace.anchors)}</span>
                         </div>
                         <small>Step {step.ordinal + 1}</small>
@@ -1416,24 +1590,28 @@ export default function App() {
         {selectedSection === "permissions" && (
           <section className="page">
             <Header
+              eyebrow="System"
               title="Permissions"
               subtitle="The Electron shell now asks the Swift bridge for real macOS permission state before recording or playback."
+              meta={allPermissionsGranted ? undefined : `${grantedPermissionCount}/3 granted`}
             />
 
-            <div className="panel-grid two-up">
-              <article className="panel">
-                <div className="panel-header">
-                  <div>
-                    <p>Required</p>
-                    <h2>Native Automation Access</h2>
+            <div className={`panel-grid${allPermissionsGranted ? " single" : " two-up"}`}>
+              {!allPermissionsGranted ? (
+                <article className="panel">
+                  <div className="panel-header">
+                    <div>
+                      <p>Required</p>
+                      <h2>Native Automation Access</h2>
+                    </div>
                   </div>
-                </div>
-                <div className="status-stack">
-                  <KeyValue label="Accessibility" value={permissionLabel(permissions.accessibility)} />
-                  <KeyValue label="Input Monitoring" value={permissionLabel(permissions.inputMonitoring)} />
-                  <KeyValue label="Screen Recording" value={permissionLabel(permissions.screenRecording)} />
-                </div>
-              </article>
+                  <div className="status-stack">
+                    <KeyValue label="Accessibility" value={permissionLabel(permissions.accessibility)} />
+                    <KeyValue label="Input Monitoring" value={permissionLabel(permissions.inputMonitoring)} />
+                    <KeyValue label="Screen Recording" value={permissionLabel(permissions.screenRecording)} />
+                  </div>
+                </article>
+              ) : null}
 
               <article className="panel">
                 <div className="panel-header">

@@ -145,9 +145,23 @@ public final class FlowRunner: Runner {
             do {
                 try await control.checkpoint()
                 try await log(.debug, flowID: request.flow.id, stepID: step.id, "Executing \(step.type.rawValue), attempt \(attempt).")
-                try await evaluate(step.preconditions, for: request, in: boundWindow)
-                try await perform(step, in: request, boundWindow: &boundWindow)
-                try await evaluate(step.postconditions, for: request, in: boundWindow)
+                try await evaluate(
+                    step.preconditions,
+                    for: request,
+                    in: boundWindow,
+                    timeoutMs: step.timeoutMs ?? request.flow.defaultTimeoutMs,
+                    pollIntervalMs: max(1, step.params.pollIntervalMs ?? 120),
+                    control: control
+                )
+                try await perform(step, in: request, boundWindow: &boundWindow, control: control)
+                try await evaluate(
+                    step.postconditions,
+                    for: request,
+                    in: boundWindow,
+                    timeoutMs: step.timeoutMs ?? request.flow.defaultTimeoutMs,
+                    pollIntervalMs: max(1, step.params.pollIntervalMs ?? 120),
+                    control: control
+                )
 
                 let result = RunStepResult(
                     stepID: step.id,
@@ -183,7 +197,8 @@ public final class FlowRunner: Runner {
     private func perform(
         _ step: FlowStep,
         in request: FlowRunRequest,
-        boundWindow: inout BoundWindow?
+        boundWindow: inout BoundWindow?,
+        control: RunControl
     ) async throws {
         switch step.type {
         case .attachWindow:
@@ -203,7 +218,7 @@ public final class FlowRunner: Runner {
             let anchor = try require(request.anchorsByID[anchorID], error: FlowRunnerError.missingAnchor(anchorID))
             let pollIntervalMs = step.params.pollIntervalMs ?? 120
             let timeoutMs = step.timeoutMs ?? request.flow.defaultTimeoutMs
-            try await waitForAnchor(anchor, in: window, timeoutMs: timeoutMs, pollIntervalMs: pollIntervalMs)
+            try await waitForAnchor(anchor, in: window, timeoutMs: timeoutMs, pollIntervalMs: pollIntervalMs, control: control)
 
         case .clickAt:
             let window = try requireWindow(boundWindow)
@@ -227,19 +242,40 @@ public final class FlowRunner: Runner {
     private func evaluate(
         _ conditions: [StepCondition],
         for request: FlowRunRequest,
-        in boundWindow: BoundWindow?
+        in boundWindow: BoundWindow?,
+        timeoutMs: Int,
+        pollIntervalMs: Int,
+        control: RunControl
     ) async throws {
         guard !conditions.isEmpty else { return }
         let window = try requireWindow(boundWindow)
+        let start = Date()
 
-        for condition in conditions {
-            let anchor = try require(request.anchorsByID[condition.anchorID], error: FlowRunnerError.missingAnchor(condition.anchorID))
+        while true {
+            try await control.checkpoint()
+
             let frame = try await frameProvider.captureFrame(for: window)
-            let match = try await matcher.match(anchor: anchor, within: frame)
-            let visible = match.confidence >= anchor.threshold
-            if visible != condition.expectedVisible {
-                throw FlowRunnerError.timeout("Condition for anchor '\(anchor.name)' not met.")
+            var unmetAnchorNames: [String] = []
+
+            for condition in conditions {
+                let anchor = try require(request.anchorsByID[condition.anchorID], error: FlowRunnerError.missingAnchor(condition.anchorID))
+                let match = try await matcher.match(anchor: anchor, within: frame)
+                let visible = match.confidence >= anchor.threshold
+                if visible != condition.expectedVisible {
+                    unmetAnchorNames.append(anchor.name)
+                }
             }
+
+            if unmetAnchorNames.isEmpty {
+                return
+            }
+
+            let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
+            if elapsedMs >= timeoutMs {
+                throw FlowRunnerError.timeout("Condition not met for \(unmetAnchorNames.joined(separator: ", ")).")
+            }
+
+            try await sleeper.sleep(milliseconds: pollIntervalMs)
         }
     }
 
@@ -247,10 +283,12 @@ public final class FlowRunner: Runner {
         _ anchor: Anchor,
         in window: BoundWindow,
         timeoutMs: Int,
-        pollIntervalMs: Int
+        pollIntervalMs: Int,
+        control: RunControl
     ) async throws {
         let start = Date()
         while true {
+            try await control.checkpoint()
             let frame = try await frameProvider.captureFrame(for: window)
             let match = try await matcher.match(anchor: anchor, within: frame)
             if match.confidence >= anchor.threshold {
