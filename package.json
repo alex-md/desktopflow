@@ -16,7 +16,9 @@
     "build:bridge": "swift build -c release --product DesktopflowBridge",
     "dist:mac": "npm run build && npm run build:bridge && electron-builder --mac dmg --publish never",
     "dist:mac:x64": "npm run build && npm run build:bridge && electron-builder --mac dmg --x64 --publish never",
-    "dist:dir": "npm run build && npm run build:bridge && electron-builder --dir --publish never"
+    "dist:dir": "npm run build && npm run build:bridge && electron-builder --dir --publish never",
+    "install:local": "./scripts/install-local-mac.sh",
+    "install:local:launch": "./scripts/install-local-mac.sh --launch"
   },
   "dependencies": {
     "react": "^19.1.1",

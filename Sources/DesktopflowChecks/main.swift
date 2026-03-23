@@ -8,8 +8,10 @@ struct DesktopflowChecks {
             try coordinateMappingCheck()
             try flowSerializationCheck()
             try recorderPipelineCheck()
+            try recorderPipelineScrollAndDragCheck()
             try recorderDefaultWaitSensitivityCheck()
             try await runnerCheck()
+            try await runnerScrollAndDragCheck()
             try await runnerConditionPollingCheck()
             print("DesktopflowChecks: all checks passed.")
         } catch {
@@ -123,6 +125,53 @@ struct DesktopflowChecks {
         try expect(second.last?.type == .clickAt, "The delayed click should still be recorded after the wait step.")
     }
 
+    private static func recorderPipelineScrollAndDragCheck() throws {
+        let window = BoundWindow(
+            descriptor: WindowDescriptor(bundleID: "com.example.Target", appName: "Target", title: "Arena"),
+            geometry: WindowGeometry(
+                frameRect: ScreenRect(x: 100, y: 100, width: 1024, height: 768),
+                contentRect: ScreenRect(x: 120, y: 140, width: 900, height: 620)
+            )
+        )
+
+        var pipeline = RecorderSemanticPipeline(
+            targetHint: TargetHint(bundleID: "com.example.Target"),
+            configuration: RecorderPipelineConfiguration(idleWaitThresholdMs: 200, minimumWaitMs: 200)
+        )
+
+        let start: TimeInterval = 30_000
+        let dragSteps = pipeline.consume(
+            RecordedLowLevelEvent(
+                timestamp: start,
+                kind: .mouseDrag(
+                    button: .left,
+                    startLocation: ScreenPoint(x: 240, y: 260),
+                    endLocation: ScreenPoint(x: 540, y: 410)
+                )
+            ),
+            in: window
+        )
+        let scrollSteps = pipeline.consume(
+            RecordedLowLevelEvent(
+                timestamp: start + 0.35,
+                kind: .scroll(
+                    location: ScreenPoint(x: 510, y: 360),
+                    deltaX: 0,
+                    deltaY: -7
+                )
+            ),
+            in: window
+        )
+
+        try expect(dragSteps.count == 1, "A drag should emit a single drag step.")
+        try expect(dragSteps.first?.type == .dragTo, "Mouse drags should become dragTo steps.")
+        try expect(dragSteps.first?.params.endPoint != nil, "Drag steps should include an end point.")
+        try expect(scrollSteps.count == 2, "A delayed scroll should emit a wait and a scroll step.")
+        try expect(scrollSteps.first?.type == .wait, "Delayed scrolls should preserve the human pause.")
+        try expect(scrollSteps.last?.type == .scrollAt, "Scroll wheel input should become scrollAt steps.")
+        try expect(scrollSteps.last?.params.deltaY == -7, "Scroll delta should round-trip through the recorder pipeline.")
+    }
+
     private static func runnerCheck() async throws {
         let window = BoundWindow(
             descriptor: WindowDescriptor(appName: "Practice", title: "Arena"),
@@ -200,6 +249,53 @@ struct DesktopflowChecks {
         try expect(report.stepResults.count == 2, "Runner should preserve both step results when polling conditions.")
     }
 
+    private static func runnerScrollAndDragCheck() async throws {
+        let window = BoundWindow(
+            descriptor: WindowDescriptor(appName: "Practice", title: "Arena"),
+            geometry: WindowGeometry(
+                frameRect: ScreenRect(x: 200, y: 100, width: 900, height: 700),
+                contentRect: ScreenRect(x: 220, y: 140, width: 860, height: 620)
+            )
+        )
+
+        let dispatcher = RecordingCheckInputDispatcher()
+        let flow = Flow(
+            name: "Scroll Drag",
+            description: "Verify that scroll and drag playback routes through the dispatcher.",
+            targetHint: TargetHint(appName: "Practice", windowTitleContains: "Arena"),
+            defaultTimeoutMs: 1_000,
+            steps: [
+                .attachWindow(ordinal: 0),
+                .scrollAt(ordinal: 1, point: NormalizedPoint(x: 0.5, y: 0.5), deltaY: -5),
+                .dragTo(
+                    ordinal: 2,
+                    from: NormalizedPoint(x: 0.2, y: 0.3),
+                    to: NormalizedPoint(x: 0.8, y: 0.65),
+                    durationMs: 480
+                )
+            ]
+        )
+
+        let runner = FlowRunner(
+            windowBinder: CheckWindowBinder(window: window),
+            frameProvider: CheckFrameProvider(),
+            matcher: CheckTemplateMatcher(successOnAttempt: 1),
+            inputDispatcher: dispatcher,
+            diagnostics: NullDiagnosticsSink(),
+            sleeper: CheckSleeper()
+        )
+
+        let report = await runner.run(
+            FlowRunRequest(flow: flow, anchorsByID: [:]),
+            control: RunControl()
+        )
+
+        let events = await dispatcher.eventsSnapshot()
+        try expect(report.status == RunStatus.succeeded, "Runner should complete a flow containing scroll and drag steps.")
+        try expect(events.contains(where: { $0.kind == "scroll" && $0.deltaY == -5 }), "Runner should dispatch scroll wheel actions.")
+        try expect(events.contains(where: { $0.kind == "drag" && $0.durationMs == 480 }), "Runner should dispatch drag actions with duration.")
+    }
+
     private static func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
         guard condition() else {
             throw CheckError(message)
@@ -252,7 +348,41 @@ private actor CheckTemplateMatcher: TemplateMatcher {
 private actor CheckInputDispatcher: InputDispatcher {
     func focus(window: BoundWindow) async throws {}
     func click(at point: ScreenPoint, button: MouseButton) async throws {}
+    func scroll(at point: ScreenPoint, deltaX: Int, deltaY: Int) async throws {}
+    func drag(from startPoint: ScreenPoint, to endPoint: ScreenPoint, button: MouseButton, durationMs: Int) async throws {}
     func pressKey(keyCode: String, modifiers: [String]) async throws {}
+}
+
+private actor RecordingCheckInputDispatcher: InputDispatcher {
+    struct Event: Sendable {
+        let kind: String
+        let deltaY: Int?
+        let durationMs: Int?
+    }
+
+    private var events: [Event] = []
+
+    func focus(window: BoundWindow) async throws {}
+
+    func click(at point: ScreenPoint, button: MouseButton) async throws {
+        events.append(Event(kind: "click", deltaY: nil, durationMs: nil))
+    }
+
+    func scroll(at point: ScreenPoint, deltaX: Int, deltaY: Int) async throws {
+        events.append(Event(kind: "scroll", deltaY: deltaY, durationMs: nil))
+    }
+
+    func drag(from startPoint: ScreenPoint, to endPoint: ScreenPoint, button: MouseButton, durationMs: Int) async throws {
+        events.append(Event(kind: "drag", deltaY: nil, durationMs: durationMs))
+    }
+
+    func pressKey(keyCode: String, modifiers: [String]) async throws {
+        events.append(Event(kind: "key", deltaY: nil, durationMs: nil))
+    }
+
+    func eventsSnapshot() async -> [Event] {
+        events
+    }
 }
 
 private actor CheckSleeper: Sleeper {

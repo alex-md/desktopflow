@@ -125,7 +125,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             header(
                 title: "Recorder",
-                subtitle: "Capture clicks and keys into a new flow."
+                subtitle: "Capture clicks, drags, scrolls, and keys into a new flow."
             )
 
             Form {
@@ -390,6 +390,13 @@ struct ContentView: View {
         case .clickAt:
             let point = step.params.point ?? NormalizedPoint(x: 0, y: 0)
             return String(format: "Click %.3f, %.3f in normalized content space.", point.x, point.y)
+        case .scrollAt:
+            let point = step.params.point ?? NormalizedPoint(x: 0, y: 0)
+            return String(format: "Scroll at %.3f, %.3f with dx %d and dy %d.", point.x, point.y, step.params.deltaX ?? 0, step.params.deltaY ?? 0)
+        case .dragTo:
+            let start = step.params.point ?? NormalizedPoint(x: 0, y: 0)
+            let end = step.params.endPoint ?? NormalizedPoint(x: 0, y: 0)
+            return String(format: "Drag from %.3f, %.3f to %.3f, %.3f.", start.x, start.y, end.x, end.y)
         case .pressKey:
             let modifiers = step.params.modifiers.isEmpty ? "" : "\(step.params.modifiers.joined(separator: "+"))+"
             return "Press key \(modifiers)\(step.params.keyCode ?? "unknown")."

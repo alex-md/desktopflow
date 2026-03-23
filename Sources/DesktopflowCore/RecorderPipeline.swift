@@ -2,6 +2,8 @@ import Foundation
 
 public enum RecordedLowLevelEventKind: Hashable, Sendable {
     case mouseDown(button: MouseButton, location: ScreenPoint)
+    case mouseDrag(button: MouseButton, startLocation: ScreenPoint, endLocation: ScreenPoint)
+    case scroll(location: ScreenPoint, deltaX: Int, deltaY: Int)
     case keyDown(keyCode: String, modifiers: [String], bundleID: String?)
 }
 
@@ -79,12 +81,22 @@ public struct RecorderSemanticPipeline: Sendable {
         case .mouseDown(let button, let location):
             guard let window else { return nil }
             guard window.geometry.contentRect.contains(location) else { return nil }
-            let rect = window.geometry.contentRect
-            let point = NormalizedPoint(
-                x: (location.x - rect.x) / rect.width,
-                y: (location.y - rect.y) / rect.height
-            )
+            let point = normalizedPoint(for: location, in: window.geometry.contentRect, clampToBounds: false)
             return FlowStep.clickAt(ordinal: 0, point: point, button: button)
+
+        case .mouseDrag(let button, let startLocation, let endLocation):
+            guard let window else { return nil }
+            guard window.geometry.contentRect.contains(startLocation) else { return nil }
+            let startPoint = normalizedPoint(for: startLocation, in: window.geometry.contentRect, clampToBounds: false)
+            let endPoint = normalizedPoint(for: endLocation, in: window.geometry.contentRect, clampToBounds: true)
+            return FlowStep.dragTo(ordinal: 0, from: startPoint, to: endPoint, button: button)
+
+        case .scroll(let location, let deltaX, let deltaY):
+            guard let window else { return nil }
+            guard window.geometry.contentRect.contains(location) else { return nil }
+            guard deltaX != 0 || deltaY != 0 else { return nil }
+            let point = normalizedPoint(for: location, in: window.geometry.contentRect, clampToBounds: false)
+            return FlowStep.scrollAt(ordinal: 0, point: point, deltaX: deltaX, deltaY: deltaY)
 
         case .keyDown(let keyCode, let modifiers, let bundleID):
             guard !Self.isModifierOnlyKey(keyCode) else { return nil }
@@ -110,5 +122,19 @@ public struct RecorderSemanticPipeline: Sendable {
 
     private static func isModifierOnlyKey(_ keyCode: String) -> Bool {
         isModifierOnlyRecorderKey(keyCode)
+    }
+
+    private func normalizedPoint(for location: ScreenPoint, in rect: ScreenRect, clampToBounds: Bool) -> NormalizedPoint {
+        let normalizedX = (location.x - rect.x) / rect.width
+        let normalizedY = (location.y - rect.y) / rect.height
+
+        if !clampToBounds {
+            return NormalizedPoint(x: normalizedX, y: normalizedY)
+        }
+
+        return NormalizedPoint(
+            x: min(1, max(0, normalizedX)),
+            y: min(1, max(0, normalizedY))
+        )
     }
 }

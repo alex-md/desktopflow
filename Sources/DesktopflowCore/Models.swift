@@ -17,6 +17,8 @@ public enum StepType: String, Codable, CaseIterable, Sendable {
     case wait
     case waitForAnchor
     case clickAt
+    case scrollAt
+    case dragTo
     case pressKey
     case checkpointScreenshot
 }
@@ -66,29 +68,38 @@ public struct StepCondition: Codable, Hashable, Sendable {
 
 public struct StepParameters: Codable, Hashable, Sendable {
     public var point: NormalizedPoint?
+    public var endPoint: NormalizedPoint?
     public var button: MouseButton?
     public var anchorID: UUID?
     public var pollIntervalMs: Int?
     public var durationMs: Int?
+    public var deltaX: Int?
+    public var deltaY: Int?
     public var keyCode: String?
     public var modifiers: [String]
     public var label: String?
 
     public init(
         point: NormalizedPoint? = nil,
+        endPoint: NormalizedPoint? = nil,
         button: MouseButton? = nil,
         anchorID: UUID? = nil,
         pollIntervalMs: Int? = nil,
         durationMs: Int? = nil,
+        deltaX: Int? = nil,
+        deltaY: Int? = nil,
         keyCode: String? = nil,
         modifiers: [String] = [],
         label: String? = nil
     ) {
         self.point = point
+        self.endPoint = endPoint
         self.button = button
         self.anchorID = anchorID
         self.pollIntervalMs = pollIntervalMs
         self.durationMs = durationMs
+        self.deltaX = deltaX
+        self.deltaY = deltaY
         self.keyCode = keyCode
         self.modifiers = modifiers
         self.label = label
@@ -163,6 +174,33 @@ public extension FlowStep {
             ordinal: ordinal,
             type: .clickAt,
             params: StepParameters(point: point, button: button)
+        )
+    }
+
+    static func scrollAt(ordinal: Int, point: NormalizedPoint, deltaX: Int = 0, deltaY: Int) -> FlowStep {
+        FlowStep(
+            ordinal: ordinal,
+            type: .scrollAt,
+            params: StepParameters(point: point, deltaX: deltaX, deltaY: deltaY)
+        )
+    }
+
+    static func dragTo(
+        ordinal: Int,
+        from startPoint: NormalizedPoint,
+        to endPoint: NormalizedPoint,
+        button: MouseButton = .left,
+        durationMs: Int = 350
+    ) -> FlowStep {
+        FlowStep(
+            ordinal: ordinal,
+            type: .dragTo,
+            params: StepParameters(
+                point: startPoint,
+                endPoint: endPoint,
+                button: button,
+                durationMs: durationMs
+            )
         )
     }
 

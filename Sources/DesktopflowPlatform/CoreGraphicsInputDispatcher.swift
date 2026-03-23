@@ -70,30 +70,54 @@ public final class CoreGraphicsInputDispatcher: @unchecked Sendable, InputDispat
 
     public func click(at point: ScreenPoint, button: MouseButton) async throws {
         let location = CGPoint(x: point.x, y: point.y)
-        let mouseButton: CGMouseButton
-        let downType: CGEventType
-        let upType: CGEventType
+        let eventTypes = mouseEventTypes(for: button)
 
-        switch button {
-        case .left:
-            mouseButton = .left
-            downType = .leftMouseDown
-            upType = .leftMouseUp
-        case .right:
-            mouseButton = .right
-            downType = .rightMouseDown
-            upType = .rightMouseUp
-        case .center:
-            mouseButton = .center
-            downType = .otherMouseDown
-            upType = .otherMouseUp
+        try await moveMouseNaturally(to: location, button: eventTypes.button)
+        try await sleep(milliseconds: randomMilliseconds(in: mousePathConfiguration.reactionDelayRangeMs))
+        try postMouseEvent(type: eventTypes.down, location: location, button: eventTypes.button)
+        try await sleep(milliseconds: randomMilliseconds(in: mousePathConfiguration.holdDelayRangeMs))
+        try postMouseEvent(type: eventTypes.up, location: location, button: eventTypes.button)
+    }
+
+    public func scroll(at point: ScreenPoint, deltaX: Int, deltaY: Int) async throws {
+        guard deltaX != 0 || deltaY != 0 else { return }
+
+        let location = CGPoint(x: point.x, y: point.y)
+        try await moveMouseNaturally(to: location, button: .left)
+        try await sleep(milliseconds: randomMilliseconds(in: mousePathConfiguration.reactionDelayRangeMs))
+
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: source,
+            units: .line,
+            wheelCount: 2,
+            wheel1: Int32(deltaY),
+            wheel2: Int32(deltaX),
+            wheel3: 0
+        ) else {
+            throw CoreGraphicsInputError.eventCreationFailed("scroll")
         }
 
-        try await moveMouseNaturally(to: location, button: mouseButton)
+        event.post(tap: .cghidEventTap)
+    }
+
+    public func drag(from startPoint: ScreenPoint, to endPoint: ScreenPoint, button: MouseButton, durationMs: Int) async throws {
+        let startLocation = CGPoint(x: startPoint.x, y: startPoint.y)
+        let endLocation = CGPoint(x: endPoint.x, y: endPoint.y)
+        let eventTypes = mouseEventTypes(for: button)
+
+        try await moveMouseNaturally(to: startLocation, button: eventTypes.button)
         try await sleep(milliseconds: randomMilliseconds(in: mousePathConfiguration.reactionDelayRangeMs))
-        try postMouseEvent(type: downType, location: location, button: mouseButton)
-        try await sleep(milliseconds: randomMilliseconds(in: mousePathConfiguration.holdDelayRangeMs))
-        try postMouseEvent(type: upType, location: location, button: mouseButton)
+        try postMouseEvent(type: eventTypes.down, location: startLocation, button: eventTypes.button)
+        try await sleep(milliseconds: max(16, min(120, UInt64(max(0, durationMs) / 6))))
+        try await moveMouseSegment(
+            from: startLocation,
+            to: endLocation,
+            button: eventTypes.button,
+            allowOvershoot: false,
+            moveEventType: eventTypes.dragged,
+            durationOverride: clamp(Double(max(0, durationMs)) / 1000, min: 0.08, max: 1.2)
+        )
+        try postMouseEvent(type: eventTypes.up, location: endLocation, button: eventTypes.button)
     }
 
     public func pressKey(keyCode: String, modifiers: [String]) async throws {
@@ -115,22 +139,30 @@ public final class CoreGraphicsInputDispatcher: @unchecked Sendable, InputDispat
 
     private func moveMouseNaturally(to target: CGPoint, button: CGMouseButton) async throws {
         let start = currentMouseLocation()
-        try await moveMouseSegment(from: start, to: target, button: button, allowOvershoot: true)
+        try await moveMouseSegment(from: start, to: target, button: button, allowOvershoot: true, moveEventType: .mouseMoved)
     }
 
-    private func moveMouseSegment(from start: CGPoint, to target: CGPoint, button: CGMouseButton, allowOvershoot: Bool) async throws {
+    private func moveMouseSegment(
+        from start: CGPoint,
+        to target: CGPoint,
+        button: CGMouseButton,
+        allowOvershoot: Bool,
+        moveEventType: CGEventType,
+        durationOverride: Double? = nil
+    ) async throws {
         let distance = hypot(target.x - start.x, target.y - start.y)
         if distance < 1 {
-            try postMouseEvent(type: .mouseMoved, location: target, button: button)
+            try postMouseEvent(type: moveEventType, location: target, button: button)
             return
         }
 
         let profile = buildMoveProfile(distance: distance)
-        let duration = clamp(
-            distance / (mousePathConfiguration.speed * profile.speedScale),
-            min: mousePathConfiguration.minDuration,
-            max: mousePathConfiguration.maxDuration
-        )
+        let duration = durationOverride
+            ?? clamp(
+                distance / (mousePathConfiguration.speed * profile.speedScale),
+                min: mousePathConfiguration.minDuration,
+                max: mousePathConfiguration.maxDuration
+            )
 
         if allowOvershoot,
            distance >= mousePathConfiguration.overshootDistanceThreshold,
@@ -139,13 +171,34 @@ public final class CoreGraphicsInputDispatcher: @unchecked Sendable, InputDispat
                 from: start,
                 distance: Double.random(in: mousePathConfiguration.overshootMin...mousePathConfiguration.overshootMax)
             )
-            try await moveMouseCurve(from: start, to: overshootTarget, button: button, profile: profile, duration: duration)
+            try await moveMouseCurve(
+                from: start,
+                to: overshootTarget,
+                button: button,
+                profile: profile,
+                duration: duration,
+                moveEventType: moveEventType
+            )
             try await sleep(milliseconds: mousePathConfiguration.overshootDwellMs)
-            try await moveMouseSegment(from: overshootTarget, to: target, button: button, allowOvershoot: false)
+            try await moveMouseSegment(
+                from: overshootTarget,
+                to: target,
+                button: button,
+                allowOvershoot: false,
+                moveEventType: moveEventType,
+                durationOverride: durationOverride
+            )
             return
         }
 
-        try await moveMouseCurve(from: start, to: target, button: button, profile: profile, duration: duration)
+        try await moveMouseCurve(
+            from: start,
+            to: target,
+            button: button,
+            profile: profile,
+            duration: duration,
+            moveEventType: moveEventType
+        )
     }
 
     private func moveMouseCurve(
@@ -153,7 +206,8 @@ public final class CoreGraphicsInputDispatcher: @unchecked Sendable, InputDispat
         to target: CGPoint,
         button: CGMouseButton,
         profile: MouseMoveProfile,
-        duration: Double
+        duration: Double,
+        moveEventType: CGEventType
     ) async throws {
         let controls = buildBezierControls(from: start, to: target, profile: profile)
         let distance = hypot(target.x - start.x, target.y - start.y)
@@ -184,8 +238,24 @@ public final class CoreGraphicsInputDispatcher: @unchecked Sendable, InputDispat
                 point = target
             }
 
-            try postMouseEvent(type: .mouseMoved, location: point, button: button)
+            try postMouseEvent(type: moveEventType, location: point, button: button)
             try await sleep(milliseconds: sleepMs)
+        }
+    }
+
+    private func mouseEventTypes(for button: MouseButton) -> (
+        button: CGMouseButton,
+        down: CGEventType,
+        up: CGEventType,
+        dragged: CGEventType
+    ) {
+        switch button {
+        case .left:
+            return (.left, .leftMouseDown, .leftMouseUp, .leftMouseDragged)
+        case .right:
+            return (.right, .rightMouseDown, .rightMouseUp, .rightMouseDragged)
+        case .center:
+            return (.center, .otherMouseDown, .otherMouseUp, .otherMouseDragged)
         }
     }
 

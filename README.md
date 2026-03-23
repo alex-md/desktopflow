@@ -35,3 +35,19 @@ Flow data is stored in a workspace directory and follows a simple JSON-based str
 WorkspaceData/
   flows/
   anchors/
+
+## Local App Install
+
+For normal day-to-day use, install a packaged app instead of running `npm run dev`:
+
+```bash
+npm run install:local
+```
+
+To build, install, and open the app immediately:
+
+```bash
+npm run install:local:launch
+```
+
+This installs `Desktopflow.app` into `/Applications`, so you can launch it from Spotlight, Launchpad, Finder, or pin it to the Dock.

@@ -4,6 +4,8 @@ export const stepTypes = [
   "wait",
   "waitForAnchor",
   "clickAt",
+  "scrollAt",
+  "dragTo",
   "pressKey",
   "checkpointScreenshot"
 ] as const;
@@ -48,10 +50,13 @@ export interface StepCondition {
 
 export interface StepParameters {
   point?: NormalizedPoint;
+  endPoint?: NormalizedPoint;
   button?: MouseButton;
   anchorID?: string;
   pollIntervalMs?: number;
   durationMs?: number;
+  deltaX?: number;
+  deltaY?: number;
   keyCode?: string;
   modifiers: string[];
   label?: string;

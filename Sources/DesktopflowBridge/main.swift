@@ -321,12 +321,21 @@ enum BridgeWorkspacePaths {
 
 @MainActor
 final class RecorderSession {
+    private struct PendingMouseGesture {
+        var button: MouseButton
+        var startLocation: ScreenPoint
+        var latestLocation: ScreenPoint
+        var hasDragged = false
+    }
+
+    private let dragDistanceThreshold: Double = 6
     private let targetHint: TargetHint
     private let windowCatalog = SystemWindowCatalog()
     private var recordingWindow: BoundWindow?
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
     private(set) var recordedSteps: [FlowStep] = []
+    private var pendingMouseGesture: PendingMouseGesture?
     private var isRecording = false
     private var pipeline: RecorderSemanticPipeline
     private var rawEventCount = 0
@@ -366,7 +375,18 @@ final class RecorderSession {
     }
 
     private func installEventTap() throws {
-        let mask = eventMask(for: .leftMouseDown) | eventMask(for: .rightMouseDown) | eventMask(for: .keyDown)
+        let mask =
+            eventMask(for: .leftMouseDown) |
+            eventMask(for: .rightMouseDown) |
+            eventMask(for: .otherMouseDown) |
+            eventMask(for: .leftMouseDragged) |
+            eventMask(for: .rightMouseDragged) |
+            eventMask(for: .otherMouseDragged) |
+            eventMask(for: .leftMouseUp) |
+            eventMask(for: .rightMouseUp) |
+            eventMask(for: .otherMouseUp) |
+            eventMask(for: .scrollWheel) |
+            eventMask(for: .keyDown)
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             guard let userInfo else {
                 return Unmanaged.passUnretained(event)
@@ -433,17 +453,22 @@ final class RecorderSession {
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
-        case .leftMouseDown, .rightMouseDown:
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            rawMouseEventCount += 1
+            beginMouseGesture(type: type, event: event)
+        case .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+            updateMouseGesture(type: type, event: event)
+        case .leftMouseUp, .rightMouseUp, .otherMouseUp:
+            finalizeMouseGesture(type: type, event: event, timestamp: eventTimestamp)
+        case .scrollWheel:
             rawMouseEventCount += 1
             recordEvent(
                 RecordedLowLevelEvent(
                     timestamp: eventTimestamp,
-                    kind: .mouseDown(
-                        button: type == .rightMouseDown ? .right : .left,
-                        location: ScreenPoint(
-                            x: event.location.x,
-                            y: event.location.y
-                        )
+                    kind: .scroll(
+                        location: ScreenPoint(x: event.location.x, y: event.location.y),
+                        deltaX: Int(event.getIntegerValueField(.scrollWheelEventDeltaAxis2)),
+                        deltaY: Int(event.getIntegerValueField(.scrollWheelEventDeltaAxis1))
                     )
                 )
             )
@@ -464,9 +489,70 @@ final class RecorderSession {
         }
     }
 
+    private func beginMouseGesture(type: CGEventType, event: CGEvent) {
+        guard let button = mouseButton(for: type) else { return }
+        let location = ScreenPoint(x: event.location.x, y: event.location.y)
+        pendingMouseGesture = PendingMouseGesture(button: button, startLocation: location, latestLocation: location)
+    }
+
+    private func updateMouseGesture(type: CGEventType, event: CGEvent) {
+        guard let button = mouseButton(for: type),
+              var pendingMouseGesture,
+              pendingMouseGesture.button == button
+        else { return }
+
+        pendingMouseGesture.latestLocation = ScreenPoint(x: event.location.x, y: event.location.y)
+        pendingMouseGesture.hasDragged = true
+        self.pendingMouseGesture = pendingMouseGesture
+    }
+
+    private func finalizeMouseGesture(type: CGEventType, event: CGEvent, timestamp: TimeInterval) {
+        guard let button = mouseButton(for: type),
+              var pendingMouseGesture,
+              pendingMouseGesture.button == button
+        else { return }
+
+        pendingMouseGesture.latestLocation = ScreenPoint(x: event.location.x, y: event.location.y)
+        self.pendingMouseGesture = nil
+
+        let eventKind: RecordedLowLevelEventKind
+        if pendingMouseGesture.hasDragged &&
+            distance(from: pendingMouseGesture.startLocation, to: pendingMouseGesture.latestLocation) >= dragDistanceThreshold {
+            eventKind = .mouseDrag(
+                button: button,
+                startLocation: pendingMouseGesture.startLocation,
+                endLocation: pendingMouseGesture.latestLocation
+            )
+        } else {
+            eventKind = .mouseDown(button: button, location: pendingMouseGesture.startLocation)
+        }
+
+        recordEvent(RecordedLowLevelEvent(timestamp: timestamp, kind: eventKind))
+    }
+
     private func recordEvent(_ event: RecordedLowLevelEvent) {
         switch event.kind {
         case .mouseDown(_, let location):
+            guard let recordingWindow else { return }
+            if !isTargetAppFrontmost() {
+                droppedMouseWrongAppCount += 1
+                return
+            }
+            guard recordingWindow.geometry.contentRect.contains(location) else {
+                droppedMouseOutsideWindowCount += 1
+                return
+            }
+        case .mouseDrag(_, let startLocation, _):
+            guard let recordingWindow else { return }
+            if !isTargetAppFrontmost() {
+                droppedMouseWrongAppCount += 1
+                return
+            }
+            guard recordingWindow.geometry.contentRect.contains(startLocation) else {
+                droppedMouseOutsideWindowCount += 1
+                return
+            }
+        case .scroll(let location, _, _):
             guard let recordingWindow else { return }
             if !isTargetAppFrontmost() {
                 droppedMouseWrongAppCount += 1
@@ -622,6 +708,23 @@ final class RecorderSession {
         if flags.contains(.maskShift) { modifiers.append("shift") }
         if flags.contains(.maskAlphaShift) { modifiers.append("capsLock") }
         return modifiers
+    }
+
+    private func mouseButton(for type: CGEventType) -> MouseButton? {
+        switch type {
+        case .leftMouseDown, .leftMouseDragged, .leftMouseUp:
+            return .left
+        case .rightMouseDown, .rightMouseDragged, .rightMouseUp:
+            return .right
+        case .otherMouseDown, .otherMouseDragged, .otherMouseUp:
+            return .center
+        default:
+            return nil
+        }
+    }
+
+    private func distance(from start: ScreenPoint, to end: ScreenPoint) -> Double {
+        hypot(end.x - start.x, end.y - start.y)
     }
 }
 

@@ -375,6 +375,122 @@ struct FlowEditorView: View {
                 }
             }
 
+        case .scrollAt:
+            HStack {
+                Text("X")
+                Slider(value: Binding(
+                    get: { model.selectedEditorStep?.params.point?.x ?? 0.5 },
+                    set: { newValue in
+                        model.mutateSelectedEditorStep { step in
+                            let current = step.params.point ?? NormalizedPoint(x: 0.5, y: 0.5)
+                            step.params.point = NormalizedPoint(x: newValue, y: current.y)
+                        }
+                    }
+                ), in: 0...1)
+                Text(String(format: "%.3f", model.selectedEditorStep?.params.point?.x ?? 0.5))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Text("Y")
+                Slider(value: Binding(
+                    get: { model.selectedEditorStep?.params.point?.y ?? 0.5 },
+                    set: { newValue in
+                        model.mutateSelectedEditorStep { step in
+                            let current = step.params.point ?? NormalizedPoint(x: 0.5, y: 0.5)
+                            step.params.point = NormalizedPoint(x: current.x, y: newValue)
+                        }
+                    }
+                ), in: 0...1)
+                Text(String(format: "%.3f", model.selectedEditorStep?.params.point?.y ?? 0.5))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            TextField("Delta X", text: Binding(
+                get: { String(model.selectedEditorStep?.params.deltaX ?? 0) },
+                set: { newValue in
+                    model.mutateSelectedEditorStep { step in
+                        step.params.deltaX = Int(newValue) ?? 0
+                    }
+                }
+            ))
+
+            TextField("Delta Y", text: Binding(
+                get: { String(model.selectedEditorStep?.params.deltaY ?? 0) },
+                set: { newValue in
+                    model.mutateSelectedEditorStep { step in
+                        step.params.deltaY = Int(newValue) ?? 0
+                    }
+                }
+            ))
+
+        case .dragTo:
+            Group {
+                TextField("Start X", text: Binding(
+                    get: { String(format: "%.3f", model.selectedEditorStep?.params.point?.x ?? 0.35) },
+                    set: { newValue in
+                        model.mutateSelectedEditorStep { step in
+                            let current = step.params.point ?? NormalizedPoint(x: 0.35, y: 0.5)
+                            step.params.point = NormalizedPoint(x: min(1, max(0, Double(newValue) ?? current.x)), y: current.y)
+                        }
+                    }
+                ))
+
+                TextField("Start Y", text: Binding(
+                    get: { String(format: "%.3f", model.selectedEditorStep?.params.point?.y ?? 0.5) },
+                    set: { newValue in
+                        model.mutateSelectedEditorStep { step in
+                            let current = step.params.point ?? NormalizedPoint(x: 0.35, y: 0.5)
+                            step.params.point = NormalizedPoint(x: current.x, y: min(1, max(0, Double(newValue) ?? current.y)))
+                        }
+                    }
+                ))
+
+                TextField("End X", text: Binding(
+                    get: { String(format: "%.3f", model.selectedEditorStep?.params.endPoint?.x ?? 0.7) },
+                    set: { newValue in
+                        model.mutateSelectedEditorStep { step in
+                            let current = step.params.endPoint ?? NormalizedPoint(x: 0.7, y: 0.5)
+                            step.params.endPoint = NormalizedPoint(x: min(1, max(0, Double(newValue) ?? current.x)), y: current.y)
+                        }
+                    }
+                ))
+
+                TextField("End Y", text: Binding(
+                    get: { String(format: "%.3f", model.selectedEditorStep?.params.endPoint?.y ?? 0.5) },
+                    set: { newValue in
+                        model.mutateSelectedEditorStep { step in
+                            let current = step.params.endPoint ?? NormalizedPoint(x: 0.7, y: 0.5)
+                            step.params.endPoint = NormalizedPoint(x: current.x, y: min(1, max(0, Double(newValue) ?? current.y)))
+                        }
+                    }
+                ))
+
+                Picker("Button", selection: Binding(
+                    get: { model.selectedEditorStep?.params.button ?? .left },
+                    set: { newValue in
+                        model.mutateSelectedEditorStep { step in
+                            step.params.button = newValue
+                        }
+                    }
+                )) {
+                    ForEach(MouseButton.allCases, id: \.self) { button in
+                        Text(button.rawValue).tag(button)
+                    }
+                }
+
+                TextField("Duration (ms)", text: Binding(
+                    get: { String(model.selectedEditorStep?.params.durationMs ?? 350) },
+                    set: { newValue in
+                        model.mutateSelectedEditorStep { step in
+                            step.params.durationMs = max(0, Int(newValue) ?? 350)
+                        }
+                    }
+                ))
+            }
+
         case .pressKey:
             TextField("Key Code", text: Binding(
                 get: { model.selectedEditorStep?.params.keyCode ?? "" },
@@ -434,6 +550,13 @@ struct FlowEditorView: View {
         case .clickAt:
             let point = step.params.point ?? NormalizedPoint(x: 0.5, y: 0.5)
             return String(format: "Click %.3f, %.3f with %@ button.", point.x, point.y, (step.params.button ?? .left).rawValue)
+        case .scrollAt:
+            let point = step.params.point ?? NormalizedPoint(x: 0.5, y: 0.5)
+            return String(format: "Scroll at %.3f, %.3f with dx %d and dy %d.", point.x, point.y, step.params.deltaX ?? 0, step.params.deltaY ?? 0)
+        case .dragTo:
+            let start = step.params.point ?? NormalizedPoint(x: 0.35, y: 0.5)
+            let end = step.params.endPoint ?? NormalizedPoint(x: 0.7, y: 0.5)
+            return String(format: "Drag from %.3f, %.3f to %.3f, %.3f with %@ button.", start.x, start.y, end.x, end.y, (step.params.button ?? .left).rawValue)
         case .pressKey:
             let modifiers = step.params.modifiers.isEmpty ? "" : "\(step.params.modifiers.joined(separator: "+"))+"
             return "Press \(modifiers)\(step.params.keyCode ?? "UNKNOWN")."

@@ -73,14 +73,32 @@ public actor RecordingInputDispatcher: InputDispatcher {
     public struct Event: Hashable, Sendable {
         public var kind: String
         public var point: ScreenPoint?
+        public var endPoint: ScreenPoint?
         public var button: MouseButton?
+        public var deltaX: Int?
+        public var deltaY: Int?
+        public var durationMs: Int?
         public var keyCode: String?
         public var modifiers: [String]
 
-        public init(kind: String, point: ScreenPoint? = nil, button: MouseButton? = nil, keyCode: String? = nil, modifiers: [String] = []) {
+        public init(
+            kind: String,
+            point: ScreenPoint? = nil,
+            endPoint: ScreenPoint? = nil,
+            button: MouseButton? = nil,
+            deltaX: Int? = nil,
+            deltaY: Int? = nil,
+            durationMs: Int? = nil,
+            keyCode: String? = nil,
+            modifiers: [String] = []
+        ) {
             self.kind = kind
             self.point = point
+            self.endPoint = endPoint
             self.button = button
+            self.deltaX = deltaX
+            self.deltaY = deltaY
+            self.durationMs = durationMs
             self.keyCode = keyCode
             self.modifiers = modifiers
         }
@@ -98,7 +116,19 @@ public actor RecordingInputDispatcher: InputDispatcher {
         events.append(Event(kind: "click", point: point, button: button))
     }
 
+    public func scroll(at point: ScreenPoint, deltaX: Int, deltaY: Int) async throws {
+        events.append(Event(kind: "scroll", point: point, deltaX: deltaX, deltaY: deltaY))
+    }
+
+    public func drag(from startPoint: ScreenPoint, to endPoint: ScreenPoint, button: MouseButton, durationMs: Int) async throws {
+        events.append(Event(kind: "drag", point: startPoint, endPoint: endPoint, button: button, durationMs: durationMs))
+    }
+
     public func pressKey(keyCode: String, modifiers: [String]) async throws {
         events.append(Event(kind: "key", keyCode: keyCode, modifiers: modifiers))
+    }
+
+    public func eventsSnapshot() async -> [Event] {
+        events
     }
 }

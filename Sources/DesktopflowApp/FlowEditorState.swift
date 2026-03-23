@@ -231,6 +231,14 @@ extension AppModel {
             )
         case .clickAt:
             return FlowStep.clickAt(ordinal: 0, point: NormalizedPoint(x: 0.5, y: 0.5))
+        case .scrollAt:
+            return FlowStep.scrollAt(ordinal: 0, point: NormalizedPoint(x: 0.5, y: 0.5), deltaY: -6)
+        case .dragTo:
+            return FlowStep.dragTo(
+                ordinal: 0,
+                from: NormalizedPoint(x: 0.35, y: 0.5),
+                to: NormalizedPoint(x: 0.7, y: 0.5)
+            )
         case .pressKey:
             return FlowStep.pressKey(ordinal: 0, keyCode: "SPACE")
         case .checkpointScreenshot:
@@ -248,6 +256,15 @@ extension AppModel {
             return StepParameters(anchorID: anchors.first?.id, pollIntervalMs: 120)
         case .clickAt:
             return StepParameters(point: NormalizedPoint(x: 0.5, y: 0.5), button: .left)
+        case .scrollAt:
+            return StepParameters(point: NormalizedPoint(x: 0.5, y: 0.5), deltaX: 0, deltaY: -6)
+        case .dragTo:
+            return StepParameters(
+                point: NormalizedPoint(x: 0.35, y: 0.5),
+                endPoint: NormalizedPoint(x: 0.7, y: 0.5),
+                button: .left,
+                durationMs: 350
+            )
         case .pressKey:
             return StepParameters(keyCode: "SPACE", modifiers: [])
         case .checkpointScreenshot:

@@ -1,4 +1,5 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, nativeImage, shell } from "electron";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Flow, RecorderEvent } from "../shared/models";
 import { abortNativeFlow, getNativeRecorderStatus, getPermissionSnapshot, listNativeWindows, runNativeFlow, startNativeRecording, stopNativeRecording } from "./nativeBridge";
@@ -8,6 +9,8 @@ import { configureWorkspaceRoot, deleteFlow, getWorkspaceRoot, loadWorkspace, sa
 
 let mainWindow: BrowserWindow | null = null;
 const PLAYBACK_KILL_ACCELERATOR = "CommandOrControl+Alt+Escape";
+const PRODUCT_NAME = "Desktopflow";
+const APP_ID = "com.desktopflow.app";
 
 globalThis.__desktopflowRecorderBroadcast = (event: RecorderEvent) => {
   mainWindow?.webContents.send("recorder:event", event);
@@ -31,6 +34,32 @@ const loadWorkspaceWithWindows = async () => {
 
 const resolvePackagedWorkspaceRoot = () => path.join(app.getPath("userData"), "WorkspaceData");
 const resolveBundledWorkspaceSeedRoot = () => path.join(process.resourcesPath, "WorkspaceData");
+const resolveProjectRoot = () => path.resolve(__dirname, "../..");
+const resolveDevIconPath = () => path.join(resolveProjectRoot(), "build", "icon.png");
+
+const configureAppShell = () => {
+  app.setName(PRODUCT_NAME);
+
+  if (process.platform === "win32") {
+    app.setAppUserModelId(APP_ID);
+  }
+
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  const { dock } = app;
+  if (!dock) {
+    return;
+  }
+
+  dock.show();
+
+  const devIconPath = resolveDevIconPath();
+  if (!app.isPackaged && existsSync(devIconPath)) {
+    dock.setIcon(nativeImage.createFromPath(devIconPath));
+  }
+};
 
 const unregisterPlaybackKillShortcut = () => {
   globalShortcut.unregister(PLAYBACK_KILL_ACCELERATOR);
@@ -80,6 +109,7 @@ const createWindow = async () => {
     vibrancy: "sidebar",
     visualEffectState: "active",
     titleBarStyle: "hiddenInset",
+    title: PRODUCT_NAME,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js")
     }
@@ -105,6 +135,7 @@ const createWindow = async () => {
 };
 
 app.whenReady().then(async () => {
+  configureAppShell();
   await initializeWorkspace();
 
   ipcMain.handle("workspace:load", async () => loadWorkspaceWithWindows());

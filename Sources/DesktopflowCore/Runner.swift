@@ -226,6 +226,26 @@ public final class FlowRunner: Runner {
             let button = step.params.button ?? .left
             try await inputDispatcher.click(at: window.geometry.screenPoint(for: point), button: button)
 
+        case .scrollAt:
+            let window = try requireWindow(boundWindow)
+            let point = try require(step.params.point, message: "scrollAt requires point")
+            let deltaX = step.params.deltaX ?? 0
+            let deltaY = step.params.deltaY ?? 0
+            try await inputDispatcher.scroll(at: window.geometry.screenPoint(for: point), deltaX: deltaX, deltaY: deltaY)
+
+        case .dragTo:
+            let window = try requireWindow(boundWindow)
+            let startPoint = try require(step.params.point, message: "dragTo requires point")
+            let endPoint = try require(step.params.endPoint, message: "dragTo requires endPoint")
+            let button = step.params.button ?? .left
+            let durationMs = max(0, step.params.durationMs ?? 350)
+            try await inputDispatcher.drag(
+                from: window.geometry.screenPoint(for: startPoint),
+                to: window.geometry.screenPoint(for: endPoint),
+                button: button,
+                durationMs: durationMs
+            )
+
         case .pressKey:
             let keyCode = try require(step.params.keyCode, message: "pressKey requires keyCode")
             try await inputDispatcher.pressKey(keyCode: keyCode, modifiers: step.params.modifiers)

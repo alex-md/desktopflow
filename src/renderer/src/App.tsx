@@ -80,6 +80,37 @@ const createStep = (type: StepType, ordinal: number): FlowStep => {
         preconditions: [],
         postconditions: []
       };
+    case "scrollAt":
+      return {
+        id: createId(),
+        ordinal,
+        type,
+        params: {
+          modifiers: [],
+          point: { x: 0.5, y: 0.5 },
+          deltaX: 0,
+          deltaY: -6
+        },
+        enabled: true,
+        preconditions: [],
+        postconditions: []
+      };
+    case "dragTo":
+      return {
+        id: createId(),
+        ordinal,
+        type,
+        params: {
+          modifiers: [],
+          button: "left",
+          point: { x: 0.35, y: 0.5 },
+          endPoint: { x: 0.7, y: 0.5 },
+          durationMs: 350
+        },
+        enabled: true,
+        preconditions: [],
+        postconditions: []
+      };
     case "pressKey":
       return {
         id: createId(),
@@ -171,6 +202,10 @@ const stepSummary = (step: FlowStep, anchors: Anchor[]) => {
     }
     case "clickAt":
       return `Click ${(step.params.point?.x ?? 0.5).toFixed(3)}, ${(step.params.point?.y ?? 0.5).toFixed(3)} with ${step.params.button ?? "left"} button.`;
+    case "scrollAt":
+      return `Scroll at ${(step.params.point?.x ?? 0.5).toFixed(3)}, ${(step.params.point?.y ?? 0.5).toFixed(3)} by dx ${step.params.deltaX ?? 0}, dy ${step.params.deltaY ?? 0}.`;
+    case "dragTo":
+      return `Drag from ${(step.params.point?.x ?? 0.35).toFixed(3)}, ${(step.params.point?.y ?? 0.5).toFixed(3)} to ${(step.params.endPoint?.x ?? 0.7).toFixed(3)}, ${(step.params.endPoint?.y ?? 0.5).toFixed(3)} with ${step.params.button ?? "left"} button.`;
     case "pressKey":
       return `Press ${step.params.modifiers.length > 0 ? `${step.params.modifiers.join("+")}+` : ""}${step.params.keyCode ?? "UNKNOWN"}.`;
     case "checkpointScreenshot":
@@ -201,6 +236,10 @@ const stepPaletteSummary = (type: StepType) => {
       return "Pause until an anchor appears.";
     case "clickAt":
       return "Click a normalized position.";
+    case "scrollAt":
+      return "Scroll at the pointer location.";
+    case "dragTo":
+      return "Click, hold, and drag between two points.";
     case "pressKey":
       return "Send a keyboard shortcut or key.";
     case "checkpointScreenshot":
@@ -586,7 +625,7 @@ export default function App() {
 
   const saveRecording = async () => {
     if (!selectedWindow || recordedSteps.length === 0) {
-      setRecorderStatus("Record at least one click or key press before saving.");
+      setRecorderStatus("Record at least one click, drag, scroll, or key press before saving.");
       return;
     }
 
@@ -886,7 +925,7 @@ export default function App() {
             <Header
               eyebrow="Capture"
               title="Recorder"
-              subtitle="Capture real clicks and keys from the selected macOS window through the Swift bridge."
+              subtitle="Capture real clicks, drags, scrolls, and keys from the selected macOS window through the Swift bridge."
               meta={`${recordedSteps.length} captured steps`}
             />
 
@@ -952,7 +991,7 @@ export default function App() {
               </div>
 
               {recordedSteps.length === 0 ? (
-                <p className="muted">Start recording, interact with the target app, then stop to review the captured click and key steps.</p>
+                <p className="muted">Start recording, interact with the target app, then stop to review the captured clicks, drags, scrolls, and key steps.</p>
               ) : (
                 <div className="step-list">
                   {recordedSteps.map((step) => (
@@ -1416,6 +1455,177 @@ export default function App() {
                                   </option>
                                 ))}
                               </select>
+                            </label>
+                          </div>
+                        )}
+
+                        {selectedEditorStep.type === "scrollAt" && (
+                          <div className="field-grid compact-fields">
+                            <label className="field">
+                              <span>X</span>
+                              <input
+                                max="1"
+                                min="0"
+                                step="0.001"
+                                type="number"
+                                value={selectedEditorStep.params.point?.x ?? 0.5}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.point = {
+                                      x: Math.max(0, Math.min(1, Number(event.target.value) || 0)),
+                                      y: step.params.point?.y ?? 0.5
+                                    };
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Y</span>
+                              <input
+                                max="1"
+                                min="0"
+                                step="0.001"
+                                type="number"
+                                value={selectedEditorStep.params.point?.y ?? 0.5}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.point = {
+                                      x: step.params.point?.x ?? 0.5,
+                                      y: Math.max(0, Math.min(1, Number(event.target.value) || 0))
+                                    };
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Delta X</span>
+                              <input
+                                type="number"
+                                value={selectedEditorStep.params.deltaX ?? 0}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.deltaX = Math.trunc(Number(event.target.value) || 0);
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Delta Y</span>
+                              <input
+                                type="number"
+                                value={selectedEditorStep.params.deltaY ?? 0}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.deltaY = Math.trunc(Number(event.target.value) || 0);
+                                  })
+                                }
+                              />
+                            </label>
+                          </div>
+                        )}
+
+                        {selectedEditorStep.type === "dragTo" && (
+                          <div className="field-grid compact-fields">
+                            <label className="field">
+                              <span>Start X</span>
+                              <input
+                                max="1"
+                                min="0"
+                                step="0.001"
+                                type="number"
+                                value={selectedEditorStep.params.point?.x ?? 0.35}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.point = {
+                                      x: Math.max(0, Math.min(1, Number(event.target.value) || 0)),
+                                      y: step.params.point?.y ?? 0.5
+                                    };
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Start Y</span>
+                              <input
+                                max="1"
+                                min="0"
+                                step="0.001"
+                                type="number"
+                                value={selectedEditorStep.params.point?.y ?? 0.5}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.point = {
+                                      x: step.params.point?.x ?? 0.35,
+                                      y: Math.max(0, Math.min(1, Number(event.target.value) || 0))
+                                    };
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="field">
+                              <span>End X</span>
+                              <input
+                                max="1"
+                                min="0"
+                                step="0.001"
+                                type="number"
+                                value={selectedEditorStep.params.endPoint?.x ?? 0.7}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.endPoint = {
+                                      x: Math.max(0, Math.min(1, Number(event.target.value) || 0)),
+                                      y: step.params.endPoint?.y ?? 0.5
+                                    };
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="field">
+                              <span>End Y</span>
+                              <input
+                                max="1"
+                                min="0"
+                                step="0.001"
+                                type="number"
+                                value={selectedEditorStep.params.endPoint?.y ?? 0.5}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.endPoint = {
+                                      x: step.params.endPoint?.x ?? 0.7,
+                                      y: Math.max(0, Math.min(1, Number(event.target.value) || 0))
+                                    };
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="field">
+                              <span>Button</span>
+                              <select
+                                value={selectedEditorStep.params.button ?? "left"}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.button = event.target.value as MouseButton;
+                                  })
+                                }
+                              >
+                                {mouseButtons.map((button) => (
+                                  <option key={button} value={button}>
+                                    {button}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="field">
+                              <span>Duration (ms)</span>
+                              <input
+                                type="number"
+                                value={selectedEditorStep.params.durationMs ?? 350}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.durationMs = Math.max(0, Number(event.target.value) || 0);
+                                  })
+                                }
+                              />
                             </label>
                           </div>
                         )}
