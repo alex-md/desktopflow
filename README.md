@@ -72,6 +72,17 @@ The workflow expects:
   - `APPLE_APP_SPECIFIC_PASSWORD`
   - `APPLE_TEAM_ID`
 
+## Homebrew
+
+Desktopflow can be installed with Homebrew from the dedicated tap repository:
+
+```bash
+brew tap alex-md/desktopflow
+brew install --cask desktopflow
+```
+
+The tap is published at `alex-md/homebrew-desktopflow`, and release tags update its cask to point at the matching GitHub release DMG.
+
 During development, the app resolves its workspace from `./WorkspaceData` by default. Packaged builds use a writable workspace under the current user's app data directory unless `DESKTOPFLOW_WORKSPACE_ROOT` is set.
 
 ## Port boundary
