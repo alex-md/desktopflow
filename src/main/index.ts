@@ -1,11 +1,13 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, shell } from "electron";
 import path from "node:path";
 import type { Flow, RecorderEvent } from "../shared/models";
 import { abortNativeFlow, getNativeRecorderStatus, getPermissionSnapshot, listNativeWindows, runNativeFlow, startNativeRecording, stopNativeRecording } from "./nativeBridge";
+import { destroyPlaybackOverlay, showRunningPlaybackOverlay, showStoppedPlaybackOverlay } from "./playbackOverlay";
 import { buildWindowCatalog } from "./windowCatalog";
 import { configureWorkspaceRoot, deleteFlow, getWorkspaceRoot, loadWorkspace, saveFlow, seedWorkspaceFrom } from "./workspace";
 
 let mainWindow: BrowserWindow | null = null;
+const PLAYBACK_KILL_ACCELERATOR = "CommandOrControl+Alt+Escape";
 
 globalThis.__desktopflowRecorderBroadcast = (event: RecorderEvent) => {
   mainWindow?.webContents.send("recorder:event", event);
@@ -29,6 +31,29 @@ const loadWorkspaceWithWindows = async () => {
 
 const resolvePackagedWorkspaceRoot = () => path.join(app.getPath("userData"), "WorkspaceData");
 const resolveBundledWorkspaceSeedRoot = () => path.join(process.resourcesPath, "WorkspaceData");
+
+const unregisterPlaybackKillShortcut = () => {
+  globalShortcut.unregister(PLAYBACK_KILL_ACCELERATOR);
+};
+
+const registerPlaybackKillShortcut = (flowID: string) => {
+  unregisterPlaybackKillShortcut();
+  return globalShortcut.register(PLAYBACK_KILL_ACCELERATOR, () => {
+    void abortNativeFlow(flowID);
+  });
+};
+
+const runFlowWithPlaybackOverlay = async (flow: Flow) => {
+  const shortcutAvailable = registerPlaybackKillShortcut(flow.id);
+  await showRunningPlaybackOverlay(shortcutAvailable);
+
+  try {
+    return await runNativeFlow(getWorkspaceRoot(), flow);
+  } finally {
+    unregisterPlaybackKillShortcut();
+    await showStoppedPlaybackOverlay(shortcutAvailable);
+  }
+};
 
 const initializeWorkspace = async () => {
   if (process.env.DESKTOPFLOW_WORKSPACE_ROOT) {
@@ -73,6 +98,8 @@ const createWindow = async () => {
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+    unregisterPlaybackKillShortcut();
+    destroyPlaybackOverlay();
     void stopNativeRecording().catch(() => undefined);
   });
 };
@@ -89,9 +116,7 @@ app.whenReady().then(async () => {
     await deleteFlow(flowID);
     return loadWorkspaceWithWindows();
   });
-  ipcMain.handle("runner:run", async (_event, flow: Flow) =>
-    runNativeFlow(getWorkspaceRoot(), flow)
-  );
+  ipcMain.handle("runner:run", async (_event, flow: Flow) => runFlowWithPlaybackOverlay(flow));
   ipcMain.handle("runner:abort", async (_event, flowID: string) => abortNativeFlow(flowID));
   ipcMain.handle("system:permissions", async () => getPermissionSnapshot());
   ipcMain.handle("recorder:status", async () => getNativeRecorderStatus());
@@ -111,6 +136,8 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  unregisterPlaybackKillShortcut();
+  destroyPlaybackOverlay();
   void stopNativeRecording().catch(() => undefined);
 });
 
