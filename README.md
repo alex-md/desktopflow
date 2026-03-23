@@ -1,105 +1,37 @@
 # Desktopflow
 
-Desktopflow is now an Electron application built with React and TypeScript. It keeps the existing `WorkspaceData/` JSON contract for flows and anchors, and ports the Swift shell into a desktop app that can be developed with standard web tooling.
+Desktopflow is a **free and open source** macOS desktop automation app for recording, editing, and replaying workflows from real desktop interactions.
 
-## Current scope
+It is designed to help you automate repetitive tasks without writing scripts, while keeping your flows and anchors stored locally in a simple, file-based workspace.
 
-- Electron main/preload process with a React renderer
-- Swift `DesktopflowBridge` executable for native macOS window discovery, permissions, recording, and playback
-- Workspace loader that reads and writes `WorkspaceData/flows/*.json` and `WorkspaceData/anchors/*.json`
-- Overview, Recorder, Flow Editor, Runner, and Permissions screens
-- Native recorder flow creation streamed back into the Electron UI
-- Native playback for non-vision steps through the existing Swift platform code
-- Existing sample workspace data loads without migration
+## Features
 
-## Build and run
+- Record desktop interactions into reusable flows
+- Edit flows in a modern desktop UI
+- Run flows directly inside the app
+- Inspect available windows on the system
+- Manage required macOS permissions
+- Store flows and anchors as JSON in a local workspace
+- Use a native Swift bridge for macOS-specific recording and playback capabilities
 
-```bash
-npm install
-npm run dev
-```
+## Screenshots
 
-For a production build:
+_Add screenshots or GIFs of the recorder, editor, runner, and permissions screens here._
 
-```bash
-npm run build
-```
+## How it works
 
-To produce a downloadable macOS app bundle and `.dmg`:
+Desktopflow uses an Electron app for the main interface, built with React and TypeScript.
 
-```bash
-npm run dist:mac
-```
+A Swift sidecar handles macOS-specific capabilities such as:
 
-That build:
+- window discovery
+- permissions
+- recording
+- playback
 
-- compiles the Electron app into `out/`
-- compiles the native Swift bridge in release mode
-- bundles the bridge and seed `WorkspaceData/` into `Desktopflow.app`
-- emits a `.dmg` into `dist/`
-
-To build the Intel release artifact that should appear on GitHub Releases:
-
-```bash
-npm run dist:mac:x64
-```
-
-That emits `dist/Desktopflow-<version>-x64.dmg`.
-
-Packaged builds no longer write into the app bundle. On first launch, Desktopflow seeds a writable workspace under the current user's application data directory and runs from there.
-
-If you want Gatekeeper-friendly distribution, provide Apple signing credentials before packaging:
-
-```bash
-export APPLE_ID="you@example.com"
-export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
-export APPLE_TEAM_ID="TEAMID1234"
-npm run dist:mac
-```
-
-Without those variables, the app still packages successfully, but electron-builder falls back to ad-hoc signing and skips notarization.
-
-## GitHub releases
-
-Tagging a release runs `.github/workflows/release.yml`, which builds the app on GitHub's Intel macOS runner and uploads the resulting `Desktopflow-<version>-x64.dmg` to the matching GitHub Release.
-
-The workflow expects:
-
-- a tag in the form `v<package.json version>` such as `v0.1.0`
-- the repository `GITHUB_TOKEN` provided by GitHub Actions
-- optional Apple signing secrets if you want a signed and notarized release build:
-  - `APPLE_ID`
-  - `APPLE_APP_SPECIFIC_PASSWORD`
-  - `APPLE_TEAM_ID`
-
-## Homebrew
-
-Desktopflow can be installed with Homebrew from the dedicated tap repository:
-
-```bash
-brew tap alex-md/desktopflow
-brew install --cask desktopflow
-```
-
-The tap is published at `alex-md/homebrew-desktopflow`, and release tags update its cask to point at the matching GitHub release DMG.
-
-During development, the app resolves its workspace from `./WorkspaceData` by default. Packaged builds use a writable workspace under the current user's app data directory unless `DESKTOPFLOW_WORKSPACE_ROOT` is set.
-
-## Port boundary
-
-The original Swift package is still present in `Sources/` as legacy reference code, but the active application entrypoint is now the Electron stack in `src/`.
-
-The Electron app now uses a Swift sidecar for the macOS-specific pieces that Electron alone cannot replace reliably. The remaining major gap is anchor-based screen matching and capture: the bridge still uses placeholder frame/matcher implementations, just like the earlier Swift shell.
-
-## Workspace layout
+Flow data is stored in a workspace directory and follows a simple JSON-based structure:
 
 ```text
-src/
-  main/
-  preload/
-  renderer/
-  shared/
 WorkspaceData/
-Sources/        # legacy Swift reference
-docs/
-```
+  flows/
+  anchors/
