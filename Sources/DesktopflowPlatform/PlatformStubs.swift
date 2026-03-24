@@ -124,8 +124,8 @@ public actor RecordingInputDispatcher: InputDispatcher {
         events.append(Event(kind: "drag", point: startPoint, endPoint: endPoint, button: button, durationMs: durationMs))
     }
 
-    public func pressKey(keyCode: String, modifiers: [String]) async throws {
-        events.append(Event(kind: "key", keyCode: keyCode, modifiers: modifiers))
+    public func pressKey(keyCode: String, modifiers: [String], durationMs: Int) async throws {
+        events.append(Event(kind: "key", durationMs: durationMs, keyCode: keyCode, modifiers: modifiers))
     }
 
     public func eventsSnapshot() async -> [Event] {

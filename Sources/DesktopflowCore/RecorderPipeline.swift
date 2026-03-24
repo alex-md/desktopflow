@@ -4,7 +4,7 @@ public enum RecordedLowLevelEventKind: Hashable, Sendable {
     case mouseDown(button: MouseButton, location: ScreenPoint)
     case mouseDrag(button: MouseButton, startLocation: ScreenPoint, endLocation: ScreenPoint)
     case scroll(location: ScreenPoint, deltaX: Int, deltaY: Int)
-    case keyDown(keyCode: String, modifiers: [String], bundleID: String?)
+    case keyDown(keyCode: String, modifiers: [String], bundleID: String?, holdDurationMs: Int?)
 }
 
 public struct RecordedLowLevelEvent: Hashable, Sendable {
@@ -98,7 +98,7 @@ public struct RecorderSemanticPipeline: Sendable {
             let point = normalizedPoint(for: location, in: window.geometry.contentRect, clampToBounds: false)
             return FlowStep.scrollAt(ordinal: 0, point: point, deltaX: deltaX, deltaY: deltaY)
 
-        case .keyDown(let keyCode, let modifiers, let bundleID):
+        case .keyDown(let keyCode, let modifiers, let bundleID, let holdDurationMs):
             guard !Self.isModifierOnlyKey(keyCode) else { return nil }
 
             if let expectedBundleID = window?.descriptor.bundleID ?? targetHint.bundleID,
@@ -107,7 +107,12 @@ public struct RecorderSemanticPipeline: Sendable {
                 return nil
             }
 
-            return FlowStep.pressKey(ordinal: 0, keyCode: keyCode, modifiers: modifiers)
+            return FlowStep.pressKey(
+                ordinal: 0,
+                keyCode: keyCode,
+                modifiers: modifiers,
+                durationMs: isHoldDurationRecorderKey(keyCode) ? holdDurationMs : nil
+            )
         }
     }
 
@@ -122,6 +127,15 @@ public struct RecorderSemanticPipeline: Sendable {
 
     private static func isModifierOnlyKey(_ keyCode: String) -> Bool {
         isModifierOnlyRecorderKey(keyCode)
+    }
+
+    private func isHoldDurationRecorderKey(_ keyCode: String) -> Bool {
+        switch keyCode.uppercased() {
+        case "LEFT", "RIGHT", "UP", "DOWN":
+            return true
+        default:
+            return false
+        }
     }
 
     private func normalizedPoint(for location: ScreenPoint, in rect: ScreenRect, clampToBounds: Bool) -> NormalizedPoint {

@@ -240,7 +240,7 @@ extension AppModel {
                 to: NormalizedPoint(x: 0.7, y: 0.5)
             )
         case .pressKey:
-            return FlowStep.pressKey(ordinal: 0, keyCode: "SPACE")
+            return FlowStep.pressKey(ordinal: 0, keyCode: "SPACE", durationMs: 0)
         case .checkpointScreenshot:
             return FlowStep.checkpointScreenshot(ordinal: 0, label: "checkpoint")
         }
@@ -266,7 +266,7 @@ extension AppModel {
                 durationMs: 350
             )
         case .pressKey:
-            return StepParameters(keyCode: "SPACE", modifiers: [])
+            return StepParameters(keyCode: "SPACE", modifiers: [], durationMs: 0)
         case .checkpointScreenshot:
             return StepParameters(label: "checkpoint")
         }

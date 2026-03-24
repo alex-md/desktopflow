@@ -120,13 +120,16 @@ public final class CoreGraphicsInputDispatcher: @unchecked Sendable, InputDispat
         try postMouseEvent(type: eventTypes.up, location: endLocation, button: eventTypes.button)
     }
 
-    public func pressKey(keyCode: String, modifiers: [String]) async throws {
+    public func pressKey(keyCode: String, modifiers: [String], durationMs: Int) async throws {
         let resolvedKeyCode = try Self.resolveKeyCode(keyCode)
         let flags = Self.resolveModifierFlags(modifiers)
 
         let downEvent = try makeKeyEvent(keyCode: resolvedKeyCode, keyDown: true, flags: flags)
         let upEvent = try makeKeyEvent(keyCode: resolvedKeyCode, keyDown: false, flags: flags)
         downEvent.post(tap: .cghidEventTap)
+        if durationMs > 0 {
+            try await sleep(milliseconds: UInt64(durationMs))
+        }
         upEvent.post(tap: .cghidEventTap)
     }
 

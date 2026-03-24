@@ -207,7 +207,7 @@ const stepSummary = (step: FlowStep, anchors: Anchor[]) => {
     case "dragTo":
       return `Drag from ${(step.params.point?.x ?? 0.35).toFixed(3)}, ${(step.params.point?.y ?? 0.5).toFixed(3)} to ${(step.params.endPoint?.x ?? 0.7).toFixed(3)}, ${(step.params.endPoint?.y ?? 0.5).toFixed(3)} with ${step.params.button ?? "left"} button.`;
     case "pressKey":
-      return `Press ${step.params.modifiers.length > 0 ? `${step.params.modifiers.join("+")}+` : ""}${step.params.keyCode ?? "UNKNOWN"}.`;
+      return `Press ${step.params.modifiers.length > 0 ? `${step.params.modifiers.join("+")}+` : ""}${step.params.keyCode ?? "UNKNOWN"}${step.params.durationMs && step.params.durationMs > 0 ? ` for ${step.params.durationMs} ms` : ""}.`;
     case "checkpointScreenshot":
       return `Capture screenshot '${step.params.label ?? "checkpoint"}'.`;
     default:
@@ -218,7 +218,7 @@ const stepSummary = (step: FlowStep, anchors: Anchor[]) => {
 const stepDetail = (step: FlowStep, anchors: Anchor[]) => {
   if (step.type === "pressKey") {
     const modifiers = step.params.modifiers.length > 0 ? `${step.params.modifiers.join("+")}+` : "";
-    return `Press ${modifiers}${step.params.keyCode ?? "UNKNOWN"}.`;
+    return `Press ${modifiers}${step.params.keyCode ?? "UNKNOWN"}${step.params.durationMs && step.params.durationMs > 0 ? ` for ${step.params.durationMs} ms` : ""}.`;
   }
 
   return stepSummary(step, anchors);
@@ -1655,6 +1655,18 @@ export default function App() {
                                 </button>
                               ))}
                             </div>
+                            <label className="field">
+                              <span>Hold Duration (ms)</span>
+                              <input
+                                type="number"
+                                value={selectedEditorStep.params.durationMs ?? 0}
+                                onChange={(event) =>
+                                  upsertSelectedStep((step) => {
+                                    step.params.durationMs = Math.max(0, Number(event.target.value) || 0);
+                                  })
+                                }
+                              />
+                            </label>
                           </div>
                         )}
 

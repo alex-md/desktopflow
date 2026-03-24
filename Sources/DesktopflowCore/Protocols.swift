@@ -31,7 +31,7 @@ public protocol InputDispatcher: Sendable {
     func click(at point: ScreenPoint, button: MouseButton) async throws
     func scroll(at point: ScreenPoint, deltaX: Int, deltaY: Int) async throws
     func drag(from startPoint: ScreenPoint, to endPoint: ScreenPoint, button: MouseButton, durationMs: Int) async throws
-    func pressKey(keyCode: String, modifiers: [String]) async throws
+    func pressKey(keyCode: String, modifiers: [String], durationMs: Int) async throws
 }
 
 public protocol FlowRepository: Sendable {

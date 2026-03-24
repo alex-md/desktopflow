@@ -9,9 +9,11 @@ struct DesktopflowChecks {
             try flowSerializationCheck()
             try recorderPipelineCheck()
             try recorderPipelineScrollAndDragCheck()
+            try recorderArrowHoldCheck()
             try recorderDefaultWaitSensitivityCheck()
             try await runnerCheck()
             try await runnerScrollAndDragCheck()
+            try await runnerArrowHoldCheck()
             try await runnerConditionPollingCheck()
             print("DesktopflowChecks: all checks passed.")
         } catch {
@@ -68,7 +70,7 @@ struct DesktopflowChecks {
         let second = pipeline.consume(
             RecordedLowLevelEvent(
                 timestamp: start + 1.4,
-                kind: .keyDown(keyCode: "SPACE", modifiers: [], bundleID: "com.example.Target")
+                kind: .keyDown(keyCode: "SPACE", modifiers: [], bundleID: "com.example.Target", holdDurationMs: nil)
             ),
             in: window
         )
@@ -170,6 +172,29 @@ struct DesktopflowChecks {
         try expect(scrollSteps.first?.type == .wait, "Delayed scrolls should preserve the human pause.")
         try expect(scrollSteps.last?.type == .scrollAt, "Scroll wheel input should become scrollAt steps.")
         try expect(scrollSteps.last?.params.deltaY == -7, "Scroll delta should round-trip through the recorder pipeline.")
+    }
+
+    private static func recorderArrowHoldCheck() throws {
+        let window = BoundWindow(
+            descriptor: WindowDescriptor(bundleID: "com.example.Target", appName: "Target", title: "Arena"),
+            geometry: WindowGeometry(
+                frameRect: ScreenRect(x: 100, y: 100, width: 1024, height: 768),
+                contentRect: ScreenRect(x: 120, y: 140, width: 900, height: 620)
+            )
+        )
+
+        var pipeline = RecorderSemanticPipeline(targetHint: TargetHint(bundleID: "com.example.Target"))
+        let keySteps = pipeline.consume(
+            RecordedLowLevelEvent(
+                timestamp: 40_000,
+                kind: .keyDown(keyCode: "DOWN", modifiers: [], bundleID: "com.example.Target", holdDurationMs: 640)
+            ),
+            in: window
+        )
+
+        try expect(keySteps.count == 1, "Arrow-key holds should emit a single pressKey step.")
+        try expect(keySteps.first?.type == .pressKey, "Arrow-key holds should still map to pressKey.")
+        try expect(keySteps.first?.params.durationMs == 640, "Arrow-key holds should preserve the measured hold duration.")
     }
 
     private static func runnerCheck() async throws {
@@ -296,6 +321,46 @@ struct DesktopflowChecks {
         try expect(events.contains(where: { $0.kind == "drag" && $0.durationMs == 480 }), "Runner should dispatch drag actions with duration.")
     }
 
+    private static func runnerArrowHoldCheck() async throws {
+        let window = BoundWindow(
+            descriptor: WindowDescriptor(appName: "Practice", title: "Arena"),
+            geometry: WindowGeometry(
+                frameRect: ScreenRect(x: 200, y: 100, width: 900, height: 700),
+                contentRect: ScreenRect(x: 220, y: 140, width: 860, height: 620)
+            )
+        )
+
+        let dispatcher = RecordingCheckInputDispatcher()
+        let flow = Flow(
+            name: "Arrow Hold",
+            description: "Verify that pressKey playback preserves key hold duration.",
+            targetHint: TargetHint(appName: "Practice", windowTitleContains: "Arena"),
+            defaultTimeoutMs: 1_000,
+            steps: [
+                .attachWindow(ordinal: 0),
+                .pressKey(ordinal: 1, keyCode: "DOWN", durationMs: 720)
+            ]
+        )
+
+        let runner = FlowRunner(
+            windowBinder: CheckWindowBinder(window: window),
+            frameProvider: CheckFrameProvider(),
+            matcher: CheckTemplateMatcher(successOnAttempt: 1),
+            inputDispatcher: dispatcher,
+            diagnostics: NullDiagnosticsSink(),
+            sleeper: CheckSleeper()
+        )
+
+        let report = await runner.run(
+            FlowRunRequest(flow: flow, anchorsByID: [:]),
+            control: RunControl()
+        )
+
+        let events = await dispatcher.eventsSnapshot()
+        try expect(report.status == RunStatus.succeeded, "Runner should complete a flow containing a held arrow key.")
+        try expect(events.contains(where: { $0.kind == "key" && $0.durationMs == 720 }), "Runner should pass the held-key duration to the dispatcher.")
+    }
+
     private static func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
         guard condition() else {
             throw CheckError(message)
@@ -350,7 +415,7 @@ private actor CheckInputDispatcher: InputDispatcher {
     func click(at point: ScreenPoint, button: MouseButton) async throws {}
     func scroll(at point: ScreenPoint, deltaX: Int, deltaY: Int) async throws {}
     func drag(from startPoint: ScreenPoint, to endPoint: ScreenPoint, button: MouseButton, durationMs: Int) async throws {}
-    func pressKey(keyCode: String, modifiers: [String]) async throws {}
+    func pressKey(keyCode: String, modifiers: [String], durationMs: Int) async throws {}
 }
 
 private actor RecordingCheckInputDispatcher: InputDispatcher {
@@ -376,8 +441,8 @@ private actor RecordingCheckInputDispatcher: InputDispatcher {
         events.append(Event(kind: "drag", deltaY: nil, durationMs: durationMs))
     }
 
-    func pressKey(keyCode: String, modifiers: [String]) async throws {
-        events.append(Event(kind: "key", deltaY: nil, durationMs: nil))
+    func pressKey(keyCode: String, modifiers: [String], durationMs: Int) async throws {
+        events.append(Event(kind: "key", deltaY: nil, durationMs: durationMs))
     }
 
     func eventsSnapshot() async -> [Event] {

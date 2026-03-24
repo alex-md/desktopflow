@@ -204,11 +204,11 @@ public extension FlowStep {
         )
     }
 
-    static func pressKey(ordinal: Int, keyCode: String, modifiers: [String] = []) -> FlowStep {
+    static func pressKey(ordinal: Int, keyCode: String, modifiers: [String] = [], durationMs: Int? = nil) -> FlowStep {
         FlowStep(
             ordinal: ordinal,
             type: .pressKey,
-            params: StepParameters(keyCode: keyCode, modifiers: modifiers)
+            params: StepParameters(durationMs: durationMs, keyCode: keyCode, modifiers: modifiers)
         )
     }
 

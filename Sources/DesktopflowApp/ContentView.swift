@@ -399,6 +399,9 @@ struct ContentView: View {
             return String(format: "Drag from %.3f, %.3f to %.3f, %.3f.", start.x, start.y, end.x, end.y)
         case .pressKey:
             let modifiers = step.params.modifiers.isEmpty ? "" : "\(step.params.modifiers.joined(separator: "+"))+"
+            if let durationMs = step.params.durationMs, durationMs > 0 {
+                return "Press key \(modifiers)\(step.params.keyCode ?? "unknown") for \(durationMs) ms."
+            }
             return "Press key \(modifiers)\(step.params.keyCode ?? "unknown")."
         case .checkpointScreenshot:
             return "Capture checkpoint '\(step.params.label ?? "checkpoint")'."

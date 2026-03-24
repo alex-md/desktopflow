@@ -508,6 +508,15 @@ struct FlowEditorView: View {
                 modifierToggle("option")
             }
 
+            TextField("Hold Duration (ms)", text: Binding(
+                get: { String(model.selectedEditorStep?.params.durationMs ?? 0) },
+                set: { newValue in
+                    model.mutateSelectedEditorStep { step in
+                        step.params.durationMs = max(0, Int(newValue) ?? 0)
+                    }
+                }
+            ))
+
         case .checkpointScreenshot:
             TextField("Label", text: Binding(
                 get: { model.selectedEditorStep?.params.label ?? "" },
@@ -559,6 +568,9 @@ struct FlowEditorView: View {
             return String(format: "Drag from %.3f, %.3f to %.3f, %.3f with %@ button.", start.x, start.y, end.x, end.y, (step.params.button ?? .left).rawValue)
         case .pressKey:
             let modifiers = step.params.modifiers.isEmpty ? "" : "\(step.params.modifiers.joined(separator: "+"))+"
+            if let durationMs = step.params.durationMs, durationMs > 0 {
+                return "Press \(modifiers)\(step.params.keyCode ?? "UNKNOWN") for \(durationMs) ms."
+            }
             return "Press \(modifiers)\(step.params.keyCode ?? "UNKNOWN")."
         case .checkpointScreenshot:
             return "Capture screenshot '\(step.params.label ?? "checkpoint")'."

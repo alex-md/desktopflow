@@ -328,6 +328,12 @@ final class RecorderSession {
         var hasDragged = false
     }
 
+    private struct PendingKeyPress {
+        var timestamp: TimeInterval
+        var modifiers: [String]
+        var bundleID: String?
+    }
+
     private let dragDistanceThreshold: Double = 6
     private let targetHint: TargetHint
     private let windowCatalog = SystemWindowCatalog()
@@ -336,6 +342,7 @@ final class RecorderSession {
     private var eventTapSource: CFRunLoopSource?
     private(set) var recordedSteps: [FlowStep] = []
     private var pendingMouseGesture: PendingMouseGesture?
+    private var pendingArrowKeyPresses: [String: PendingKeyPress] = [:]
     private var isRecording = false
     private var pipeline: RecorderSemanticPipeline
     private var rawEventCount = 0
@@ -386,6 +393,7 @@ final class RecorderSession {
             eventMask(for: .rightMouseUp) |
             eventMask(for: .otherMouseUp) |
             eventMask(for: .scrollWheel) |
+            eventMask(for: .keyUp) |
             eventMask(for: .keyDown)
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             guard let userInfo else {
@@ -474,16 +482,9 @@ final class RecorderSession {
             )
         case .keyDown:
             rawKeyEventCount += 1
-            recordEvent(
-                RecordedLowLevelEvent(
-                    timestamp: eventTimestamp,
-                    kind: .keyDown(
-                        keyCode: keyIdentifier(for: event),
-                        modifiers: modifiers(for: event),
-                        bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-                    )
-                )
-            )
+            handleKeyDown(event, timestamp: eventTimestamp)
+        case .keyUp:
+            handleKeyUp(event, timestamp: eventTimestamp)
         default:
             break
         }
@@ -530,6 +531,55 @@ final class RecorderSession {
         recordEvent(RecordedLowLevelEvent(timestamp: timestamp, kind: eventKind))
     }
 
+    private func handleKeyDown(_ event: CGEvent, timestamp: TimeInterval) {
+        let keyCode = keyIdentifier(for: event)
+        let currentModifiers = modifiers(for: event)
+        let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+
+        if isArrowKey(keyCode) {
+            if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+                pendingArrowKeyPresses[keyCode] = PendingKeyPress(
+                    timestamp: timestamp,
+                    modifiers: currentModifiers,
+                    bundleID: bundleID
+                )
+            }
+            return
+        }
+
+        recordEvent(
+            RecordedLowLevelEvent(
+                timestamp: timestamp,
+                kind: .keyDown(
+                    keyCode: keyCode,
+                    modifiers: currentModifiers,
+                    bundleID: bundleID,
+                    holdDurationMs: nil
+                )
+            )
+        )
+    }
+
+    private func handleKeyUp(_ event: CGEvent, timestamp: TimeInterval) {
+        let keyCode = keyIdentifier(for: event)
+        guard isArrowKey(keyCode),
+              let pendingKeyPress = pendingArrowKeyPresses.removeValue(forKey: keyCode)
+        else { return }
+
+        let holdDurationMs = max(0, Int(((timestamp - pendingKeyPress.timestamp) * 1000).rounded()))
+        recordEvent(
+            RecordedLowLevelEvent(
+                timestamp: timestamp,
+                kind: .keyDown(
+                    keyCode: keyCode,
+                    modifiers: pendingKeyPress.modifiers,
+                    bundleID: pendingKeyPress.bundleID,
+                    holdDurationMs: holdDurationMs
+                )
+            )
+        )
+    }
+
     private func recordEvent(_ event: RecordedLowLevelEvent) {
         switch event.kind {
         case .mouseDown(_, let location):
@@ -562,7 +612,7 @@ final class RecorderSession {
                 droppedMouseOutsideWindowCount += 1
                 return
             }
-        case .keyDown(let keyCode, _, let bundleID):
+        case .keyDown(let keyCode, _, let bundleID, _):
             if RecorderSemanticPipeline.isModifierOnlyRecorderKey(keyCode) {
                 droppedModifierOnlyKeyCount += 1
                 return
@@ -725,6 +775,15 @@ final class RecorderSession {
 
     private func distance(from start: ScreenPoint, to end: ScreenPoint) -> Double {
         hypot(end.x - start.x, end.y - start.y)
+    }
+
+    private func isArrowKey(_ keyCode: String) -> Bool {
+        switch keyCode.uppercased() {
+        case "LEFT", "RIGHT", "UP", "DOWN":
+            return true
+        default:
+            return false
+        }
     }
 }
 

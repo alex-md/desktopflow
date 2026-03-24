@@ -248,7 +248,11 @@ public final class FlowRunner: Runner {
 
         case .pressKey:
             let keyCode = try require(step.params.keyCode, message: "pressKey requires keyCode")
-            try await inputDispatcher.pressKey(keyCode: keyCode, modifiers: step.params.modifiers)
+            try await inputDispatcher.pressKey(
+                keyCode: keyCode,
+                modifiers: step.params.modifiers,
+                durationMs: max(0, step.params.durationMs ?? 0)
+            )
 
         case .checkpointScreenshot:
             let window = try requireWindow(boundWindow)

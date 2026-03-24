@@ -8,7 +8,7 @@ import { buildWindowCatalog } from "./windowCatalog";
 import { configureWorkspaceRoot, deleteFlow, getWorkspaceRoot, loadWorkspace, saveFlow, seedWorkspaceFrom } from "./workspace";
 
 let mainWindow: BrowserWindow | null = null;
-const PLAYBACK_KILL_ACCELERATOR = "CommandOrControl+Alt+Escape";
+const PLAYBACK_KILL_ACCELERATOR = "CommandOrControl+Shift+`";
 const PRODUCT_NAME = "Desktopflow";
 const APP_ID = "com.desktopflow.app";
 

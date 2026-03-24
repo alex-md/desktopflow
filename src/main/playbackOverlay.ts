@@ -23,8 +23,8 @@ const escapeHtml = (value: string) =>
 
 const overlayBodyCopy = (shortcutAvailable: boolean) =>
   shortcutAvailable
-    ? "Press cmd, alt, and escape at the same time to kill playback."
-    : "Press cmd, alt, and escape at the same time to kill playback. If macOS blocks it, use Abort in Desktopflow.";
+    ? "Press cmd, shift, and tilde at the same time to kill playback."
+    : "Press cmd, shift, and tilde at the same time to kill playback. If macOS blocks it, use Abort in Desktopflow.";
 
 const buildOverlayHtml = ({ isRunning, shortcutAvailable }: PlaybackOverlayState) => {
   const heading = isRunning ? "Playback in progress" : "Playback not in progress";
