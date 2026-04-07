@@ -34,7 +34,7 @@
     "electron-builder": "^26.0.12",
     "electron-vite": "^4.0.0",
     "typescript": "^5.9.2",
-    "vite": "^7.1.5"
+    "vite": "^7.3.2"
   },
   "build": {
     "appId": "com.desktopflow.app",
