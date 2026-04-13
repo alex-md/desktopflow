@@ -87,6 +87,15 @@ export interface Flow {
   steps: FlowStep[];
 }
 
+export interface FlowRunOptions {
+  loopCount: number;
+}
+
+export interface RunFlowRequestPayload {
+  flow: Flow;
+  options: FlowRunOptions;
+}
+
 export interface Anchor {
   id: string;
   assetID: string;
@@ -112,6 +121,7 @@ export interface RunStepResult {
   status: RunStatus;
   reason?: string;
   attempts: number;
+  iteration?: number;
 }
 
 export interface FlowRunReport {
@@ -121,6 +131,8 @@ export interface FlowRunReport {
   status: RunStatus;
   stopReason?: string;
   stepResults: RunStepResult[];
+  requestedLoops?: number;
+  completedLoops?: number;
 }
 
 export interface PermissionSnapshot {

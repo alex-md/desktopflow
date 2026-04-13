@@ -1,7 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, nativeImage, shell } from "electron";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { Flow, RecorderEvent } from "../shared/models";
+import type { Flow, FlowRunOptions, FlowRunReport, RecorderEvent, RunFlowRequestPayload, RunStepResult } from "../shared/models";
 import { abortNativeFlow, getNativeRecorderStatus, getPermissionSnapshot, listNativeWindows, runNativeFlow, startNativeRecording, stopNativeRecording } from "./nativeBridge";
 import { destroyPlaybackOverlay, showRunningPlaybackOverlay, showStoppedPlaybackOverlay } from "./playbackOverlay";
 import { buildWindowCatalog } from "./windowCatalog";
@@ -72,12 +72,63 @@ const registerPlaybackKillShortcut = (flowID: string) => {
   });
 };
 
-const runFlowWithPlaybackOverlay = async (flow: Flow) => {
+const prefixLoopReason = (report: FlowRunReport, iteration: number) => {
+  if (!report.stopReason) {
+    return iteration > 1 ? `Stopped during loop ${iteration}.` : report.stopReason;
+  }
+
+  if (report.status === "aborted") {
+    return `Playback aborted during loop ${iteration}.`;
+  }
+
+  return iteration > 1 ? `Loop ${iteration}: ${report.stopReason}` : report.stopReason;
+};
+
+const withIteration = (stepResults: RunStepResult[], iteration: number) =>
+  stepResults.map((result) => ({
+    ...result,
+    iteration
+  }));
+
+const runFlowWithPlaybackOverlay = async (flow: Flow, options: FlowRunOptions): Promise<FlowRunReport> => {
   const shortcutAvailable = registerPlaybackKillShortcut(flow.id);
   await showRunningPlaybackOverlay(shortcutAvailable);
+  const startedAt = new Date().toISOString();
+  const requestedLoops = Math.max(0, Math.trunc(options.loopCount));
+  const stepResults: RunStepResult[] = [];
+  let completedLoops = 0;
 
   try {
-    return await runNativeFlow(getWorkspaceRoot(), flow);
+    while (requestedLoops === 0 || completedLoops < requestedLoops) {
+      const iteration = completedLoops + 1;
+      const report = await runNativeFlow(getWorkspaceRoot(), flow);
+      stepResults.push(...withIteration(report.stepResults, iteration));
+
+      if (report.status !== "succeeded") {
+        return {
+          flowID: flow.id,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          status: report.status,
+          stopReason: prefixLoopReason(report, iteration),
+          stepResults,
+          requestedLoops,
+          completedLoops
+        };
+      }
+
+      completedLoops += 1;
+    }
+
+    return {
+      flowID: flow.id,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      status: "succeeded",
+      stepResults,
+      requestedLoops,
+      completedLoops
+    };
   } finally {
     unregisterPlaybackKillShortcut();
     await showStoppedPlaybackOverlay(shortcutAvailable);
@@ -147,7 +198,7 @@ app.whenReady().then(async () => {
     await deleteFlow(flowID);
     return loadWorkspaceWithWindows();
   });
-  ipcMain.handle("runner:run", async (_event, flow: Flow) => runFlowWithPlaybackOverlay(flow));
+  ipcMain.handle("runner:run", async (_event, request: RunFlowRequestPayload) => runFlowWithPlaybackOverlay(request.flow, request.options));
   ipcMain.handle("runner:abort", async (_event, flowID: string) => abortNativeFlow(flowID));
   ipcMain.handle("system:permissions", async () => getPermissionSnapshot());
   ipcMain.handle("recorder:status", async () => getNativeRecorderStatus());

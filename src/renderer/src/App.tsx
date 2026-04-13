@@ -3,6 +3,7 @@ import type {
   Anchor,
   Flow,
   FlowRunReport,
+  RunFlowRequestPayload,
   FlowStep,
   MouseButton,
   PermissionSnapshot,
@@ -41,6 +42,36 @@ const cloneFlow = (flow: Flow | null): Flow | null => (flow ? JSON.parse(JSON.st
 const normalizeOptional = (value: string) => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const parseLoopCount = (value: string) => {
+  if (!/^\d+$/.test(value.trim())) {
+    return null;
+  }
+
+  return Number.parseInt(value, 10);
+};
+
+const describeLoopCount = (loopCount: number) => {
+  if (loopCount === 0) {
+    return "in a loop until stopped";
+  }
+
+  if (loopCount === 1) {
+    return "once";
+  }
+
+  return `${loopCount} times`;
+};
+
+const summarizeRunReport = (report: FlowRunReport) => {
+  const completedLoops = report.completedLoops ?? (report.status === "succeeded" ? 1 : 0);
+
+  if (report.status === "succeeded") {
+    return completedLoops > 1 ? `Playback finished successfully after ${completedLoops} loops.` : "Playback finished successfully.";
+  }
+
+  return report.stopReason ?? "Playback failed.";
 };
 
 const createStep = (type: StepType, ordinal: number): FlowStep => {
@@ -335,6 +366,7 @@ export default function App() {
   const [isRecorderPending, setIsRecorderPending] = useState(false);
   const [recorderStatus, setRecorderStatus] = useState("Idle");
   const [isRunningFlow, setIsRunningFlow] = useState(false);
+  const [loopCountInput, setLoopCountInput] = useState("1");
   const [runnerStatus, setRunnerStatus] = useState("Idle");
   const [lastRunReport, setLastRunReport] = useState<FlowRunReport | null>(null);
   const [permissions, setPermissions] = useState<PermissionSnapshot>(emptyPermissions);
@@ -678,14 +710,26 @@ export default function App() {
       return;
     }
 
+    const loopCount = parseLoopCount(loopCountInput);
+    if (loopCount === null) {
+      setRunnerStatus("Loop count must be 0 or a positive whole number.");
+      return;
+    }
+
     setIsRunningFlow(true);
-    setRunnerStatus(`Running '${selectedFlow.name}'...`);
+    setRunnerStatus(`Running '${selectedFlow.name}' ${describeLoopCount(loopCount)}...`);
     setLastRunReport(null);
 
     try {
-      const report = await window.desktopflow.runFlow(selectedFlow);
+      const request: RunFlowRequestPayload = {
+        flow: selectedFlow,
+        options: {
+          loopCount
+        }
+      };
+      const report = await window.desktopflow.runFlow(request);
       setLastRunReport(report);
-      setRunnerStatus(report.status === "succeeded" ? "Playback finished successfully." : report.stopReason ?? "Playback failed.");
+      setRunnerStatus(summarizeRunReport(report));
     } catch (error) {
       setRunnerStatus(error instanceof Error ? error.message : "Playback failed.");
     } finally {
@@ -810,8 +854,9 @@ export default function App() {
   const hasUnsavedEditorWork = Boolean(editorDraft) && (!draftExistsInWorkspace || editorIsDirty);
   const canSaveEditorDraft = Boolean(editorDraft) && hasUnsavedEditorWork;
   const runnerCompletion = lastRunReport
-    ? `${lastRunReport.stepResults.filter((result) => result.status === "succeeded").length}/${lastRunReport.stepResults.length} complete`
+    ? `${lastRunReport.stepResults.filter((result) => result.status === "succeeded").length}/${lastRunReport.stepResults.length} complete • ${lastRunReport.completedLoops ?? 0}/${lastRunReport.requestedLoops === 0 ? "∞" : lastRunReport.requestedLoops ?? 1} loops`
     : "No recent run";
+  const showLoopIteration = lastRunReport ? (lastRunReport.requestedLoops ?? 1) !== 1 || (lastRunReport.completedLoops ?? 0) > 1 : false;
   const workspaceSummary = `${workspace.flows.length} flows • ${workspace.windows.length} targets`;
   const activeFlowSummary = lastError ? lastError : selectedFlow ? `${selectedFlow.name} is currently in focus.` : "Select or create a flow to begin.";
 
@@ -1730,6 +1775,29 @@ export default function App() {
               <button className="primary" disabled={!selectedFlow || isRunningFlow} onClick={() => void runSelectedFlow()} type="button">
                 Run Selected Flow
               </button>
+              <label className="field runner-loop-field">
+                <span>Loop Count</span>
+                <input
+                  disabled={isRunningFlow}
+                  inputMode="numeric"
+                  min="0"
+                  onBlur={() => {
+                    if (loopCountInput.trim().length === 0) {
+                      setLoopCountInput("1");
+                    }
+                  }}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    if (/^\d*$/.test(nextValue)) {
+                      setLoopCountInput(nextValue);
+                    }
+                  }}
+                  placeholder="1"
+                  step="1"
+                  type="text"
+                  value={loopCountInput}
+                />
+              </label>
               <button className="ghost" disabled={!selectedFlow || !isRunningFlow} onClick={() => void abortRunningFlow()} type="button">
                 Abort
               </button>
@@ -1747,6 +1815,16 @@ export default function App() {
                   <KeyValue label="Flow" value={selectedFlow?.name ?? "None"} />
                   <KeyValue label="Steps" value={`${selectedFlow?.steps.length ?? 0}`} />
                   <KeyValue label="Last Status" value={lastRunReport?.status ?? "idle"} />
+                  <KeyValue
+                    label="Loops"
+                    value={
+                      lastRunReport
+                        ? `${lastRunReport.completedLoops ?? 0}/${lastRunReport.requestedLoops === 0 ? "∞" : lastRunReport.requestedLoops ?? 1}`
+                        : loopCountInput === "0"
+                          ? "∞ requested"
+                          : `${loopCountInput || "1"} requested`
+                    }
+                  />
                 </div>
 
                 {lastRunReport ? (
@@ -1793,10 +1871,10 @@ export default function App() {
               {lastRunReport ? (
                 <div className="step-list">
                   {lastRunReport.stepResults.map((result) => (
-                    <div className={`step-card ${result.status}`} key={result.stepID}>
+                    <div className={`step-card ${result.status}`} key={`${result.stepID}-${result.iteration ?? 1}-${result.finishedAt}`}>
                       <div>
                         <strong>{result.status}</strong>
-                        <span>{result.reason ?? "Completed"}</span>
+                        <span>{showLoopIteration && result.iteration ? `Loop ${result.iteration} • ${result.reason ?? "Completed"}` : result.reason ?? "Completed"}</span>
                       </div>
                       <small>{fmtDate(result.finishedAt)}</small>
                     </div>

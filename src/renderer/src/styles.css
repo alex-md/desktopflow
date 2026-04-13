@@ -653,6 +653,10 @@ select:focus {
   flex-wrap: wrap;
 }
 
+.runner-loop-field {
+  width: 168px;
+}
+
 .status-stack,
 .step-list {
   flex-direction: column;

@@ -1,10 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { Flow, FlowRunReport, FlowStep, PermissionSnapshot, RecorderEvent, RecorderStatus, TargetHint, WorkspacePayload } from "../shared/models";
+import type { Flow, FlowRunReport, FlowStep, PermissionSnapshot, RecorderEvent, RecorderStatus, RunFlowRequestPayload, TargetHint, WorkspacePayload } from "../shared/models";
 const api = {
   loadWorkspace: () => ipcRenderer.invoke("workspace:load") as Promise<WorkspacePayload>,
   saveFlow: (flow: Flow) => ipcRenderer.invoke("workspace:save-flow", flow) as Promise<WorkspacePayload>,
   deleteFlow: (flowID: string) => ipcRenderer.invoke("workspace:delete-flow", flowID) as Promise<WorkspacePayload>,
-  runFlow: (flow: Flow) => ipcRenderer.invoke("runner:run", flow) as Promise<FlowRunReport>,
+  runFlow: (request: RunFlowRequestPayload) => ipcRenderer.invoke("runner:run", request) as Promise<FlowRunReport>,
   abortFlow: (flowID: string) => ipcRenderer.invoke("runner:abort", flowID) as Promise<boolean>,
   getPermissions: () => ipcRenderer.invoke("system:permissions") as Promise<PermissionSnapshot>,
   getRecorderStatus: () => ipcRenderer.invoke("recorder:status") as Promise<RecorderStatus>,
